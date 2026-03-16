@@ -1,47 +1,10 @@
 /* 全局設定 */
-body { 
-    font-family: "Microsoft JhengHei", Arial, sans-serif; 
-    margin: 0; 
-    display: flex; 
-    height: 100vh; 
-    background-color: #f4f7f6; 
-    color: #333; 
-    overflow: hidden; 
-}
-
-/* 側邊欄 */
-#sidebar { 
-    width: 250px; 
-    background-color: #1a202c; 
-    color: white; 
-    transition: all 0.3s; 
-    display: flex; 
-    flex-direction: column; 
-}
-
-.sidebar-header { 
-    padding: 20px; 
-    background-color: #2d3748; 
-    text-align: center; 
-    border-bottom: 1px solid #4a5568; 
-}
-
-.sidebar-header h3 { 
-    margin: 0; 
-    font-size: 1.2rem; 
-    color: #fff; 
-}
-
+body { font-family: "Microsoft JhengHei", Arial, sans-serif; margin: 0; display: flex; height: 100vh; background-color: #f4f7f6; color: #333; overflow: hidden; }
+#sidebar { width: 250px; background-color: #1a202c; color: white; transition: all 0.3s; display: flex; flex-direction: column; }
+.sidebar-header { padding: 20px; background-color: #2d3748; text-align: center; border-bottom: 1px solid #4a5568; }
+.sidebar-header h3 { margin: 0; font-size: 1.2rem; color: #fff; }
 .nav-links { list-style: none; padding: 0; margin: 0; }
-.nav-links li a { 
-    display: block; 
-    padding: 15px 25px; 
-    color: #a0aec0; 
-    text-decoration: none; 
-    font-size: 16px; 
-    transition: 0.2s; 
-}
-
+.nav-links li a { display: block; padding: 15px 25px; color: #a0aec0; text-decoration: none; font-size: 16px; transition: 0.2s; }
 .nav-links li a:hover { background-color: #2d3748; color: white; }
 .nav-links li a.active { background-color: #3182ce; color: white; border-left: 5px solid #63b3ed; }
 .nav-links li a i { margin-right: 10px; width: 20px; text-align: center; }
@@ -57,33 +20,16 @@ header { background: #fff; padding: 15px 20px; box-shadow: 0 2px 4px rgba(0,0,0,
 .input-group { display: flex; gap: 10px; margin-bottom: 15px; }
 
 /* 表單與按鈕 */
-input[type="text"], input[type="time"], input[type="date"], input[type="number"], select { 
-    padding: 10px; 
-    border: 1px solid #cbd5e0; 
-    border-radius: 4px; 
-    box-sizing: border-box; 
-    width: 100%; 
-}
-
-button { 
-    padding: 10px 15px; 
-    background-color: #3182ce; 
-    color: white; 
-    border: none; 
-    border-radius: 4px; 
-    cursor: pointer; 
-    white-space: nowrap; 
-}
-button:hover { background-color: #2b6cb0; }
+input[type="text"], input[type="time"], input[type="date"], input[type="number"], select { padding: 10px; border: 1px solid #cbd5e0; border-radius: 4px; box-sizing: border-box; width: 100%; }
+button { padding: 10px 15px; background-color: #3182ce; color: white; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap; transition: 0.2s; }
+button:hover { filter: brightness(0.9); }
 
 /* 清單與編輯按鈕 */
 ul { list-style: none; padding: 0; }
 li { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #edf2f7; }
 .btn-group { display: flex; gap: 5px; }
 .edit-btn { background-color: #48bb78; padding: 5px 10px; font-size: 12px; }
-.edit-btn:hover { background-color: #38a169; }
 .delete-btn { background-color: #e53e3e; padding: 5px 10px; font-size: 12px; }
-.delete-btn:hover { background-color: #c53030; }
 
 /* 報工表單專用排版 */
 .form-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; align-items: end; }
@@ -92,12 +38,18 @@ li { display: flex; justify-content: space-between; align-items: center; padding
 .checkbox-container input { width: auto; transform: scale(1.2); }
 .checkbox-container label { margin-bottom: 0; cursor: pointer; }
 
-/* 停機紀錄表格 */
+/* 表格與統計樣式 */
 .data-table { width: 100%; border-collapse: collapse; margin-top: 15px; }
 .data-table th, .data-table td { border: 1px solid #e2e8f0; padding: 10px; text-align: left; }
 .data-table th { background-color: #f7fafc; font-weight: bold; }
 .total-summary { text-align: right; margin-top: 15px; font-size: 1.1rem; font-weight: bold; color: #e53e3e; }
-
-/* 大儲存按鈕 */
 .save-btn { background-color: #ed8936; font-size: 16px; padding: 12px 30px; border-radius: 30px; }
-.save-btn:hover { background-color: #dd6b20; }
+.cancel-btn { background-color: #a0aec0; font-size: 16px; padding: 12px 30px; border-radius: 30px; margin-left: 10px; }
+
+/* 統計看板卡片 */
+.stat-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px; }
+.stat-card { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); text-align: center; border-top: 4px solid #3182ce; }
+.stat-card h4 { margin: 0 0 10px 0; color: #718096; font-size: 14px; }
+.stat-card .value { font-size: 28px; font-weight: bold; color: #2d3748; }
+.stat-card .unit { font-size: 14px; color: #a0aec0; }
+.chart-container { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); text-align: center; }
