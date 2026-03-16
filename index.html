@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SMT 機台稼動率統計系統</title>
+    <title>中科廠 稼動率統計系統</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -76,7 +76,7 @@
 
     <nav id="sidebar">
         <div class="sidebar-header">
-            <h3><i class="fas fa-microchip"></i> SMT OEE 系統</h3>
+            <h3><i class="fas fa-microchip"></i> 中科廠 稼動率統計</h3>
         </div>
         <ul class="nav-links">
             <li><a href="#" onclick="switchPage('daily-record', '每日報工')" id="nav-daily-record"><i class="fas fa-edit"></i> 每日報工</a></li>
@@ -203,7 +203,7 @@
 
                     <div class="chart-container"><canvas id="downtimeChart"></canvas></div>
 
-                    <h3 style="margin-top: 40px; border-bottom: 2px solid #cbd5e0; padding-bottom: 10px; color: #2c3e50;"><i class="fas fa-list"></i> 每日機台明細</h3>
+                    <h3 style="margin-top: 40px; border-bottom: 2px solid #cbd5e0; padding-bottom: 10px; color: #2c3e50;"><i class="fas fa-list"></i> 每日機台明細 (含區間小計)</h3>
                     <div style="overflow-x: auto;">
                         <table class="data-table" style="min-width: 800px;">
                             <thead>
@@ -496,7 +496,6 @@
             const endTime = getSelectedTime('endHour', 'endMinute');
             const earlyEndTime = getSelectedTime('earlyEndHour', 'earlyEndMinute');
             const machineId = document.getElementById('recordMachine').value;
-            // ★ 新增：取得是否輪休的值
             const isRollingBreak = document.getElementById('isRollingBreak').checked;
 
             if (!date || !line || !startTime || !endTime || !machineId) return alert('請完整填寫上方共用資料(日期/線別/開線/結束) 以及 要儲存的機台名稱！');
@@ -540,8 +539,6 @@
             document.getElementById('recordLine').value = record.line_name; updateRecordMachineDropdown(); 
             document.getElementById('recordMachine').value = record.machine_id;
             setSelectedTime('startHour', 'startMinute', record.start_time); setSelectedTime('endHour', 'endMinute', record.end_time); setSelectedTime('earlyEndHour', 'earlyEndMinute', record.early_end_time);
-            
-            // ★ 新增：載入是否輪休的狀態
             document.getElementById('isRollingBreak').checked = record.is_rolling_break !== false;
 
             currentDowntimeEvents = [];
@@ -549,7 +546,7 @@
             renderDowntimeTable(); await db.from('production_records').delete().eq('id', id); loadRecordsByDate(); window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        // ================= ★ 統計與導出邏輯 (包含輪休判斷邏輯) ★ =================
+        // ================= ★ 統計與導出邏輯 (加入機台區間小計) ★ =================
         function getMinutesDiff(start, end) {
             if (!start || !end) return 0; const [sH, sM] = start.split(':').map(Number); const [eH, eM] = end.split(':').map(Number); return (eH * 60 + eM) - (sH * 60 + sM);
         }
@@ -574,50 +571,81 @@
 
             let totalActualAvailTime = 0; let grandTotalDowntime = 0; const reasonDowntimeMap = {}; currentExportData = []; let detailHTML = '';
 
-            records.forEach(record => {
-                const plannedMin = getMinutesDiff(record.start_time, record.end_time);
-                let earlyEndMin = record.early_end_time ? getMinutesDiff(record.early_end_time, record.end_time) : 0; 
-                if (earlyEndMin < 0) earlyEndMin = 0;
-                
-                // ★ 新增：判斷是否需要扣除 60 分鐘午休
-                const actualEndTimeStr = record.early_end_time ? record.early_end_time : record.end_time;
-                const [aH, aM] = actualEndTimeStr.split(':').map(Number);
-                const actualEndMins = (aH * 60) + aM;
-                
-                let breakDeduction = 0;
-                // 如果「沒有勾選輪休 (false)」，且「實際結束時間大於 12:00 (720分)」，才扣除 60 分鐘
-                if (!record.is_rolling_break && actualEndMins > 720) {
-                    breakDeduction = 60;
-                }
-                
-                const actualAvailMin = plannedMin - earlyEndMin - breakDeduction; 
-                totalActualAvailTime += actualAvailMin;
-
-                let recordDowntime = 0; let recordReasonMap = {}; 
-                
-                if (record.downtime_events) {
-                    record.downtime_events.forEach(event => {
-                        const duration = event.duration_minutes; const rName = event.downtime_reasons.name;
-                        recordDowntime += duration; grandTotalDowntime += duration;
-                        reasonDowntimeMap[rName] = (reasonDowntimeMap[rName] || 0) + duration;
-                        recordReasonMap[rName] = (recordReasonMap[rName] || 0) + duration;
-                    });
-                }
-                
-                let recordOEE = actualAvailMin > 0 ? ((actualAvailMin - recordDowntime) / actualAvailMin) * 100 : 0;
-                let downtimeStrForExcel = Object.entries(recordReasonMap).map(([r, t]) => `${r}: ${t}分`).join('\n') || '無';
-                let downtimeStrForHTML = Object.entries(recordReasonMap).map(([r, t]) => `${r}: <span style="color:#e53e3e;font-weight:bold;">${t}分</span>`).join('<br>') || '-';
-
-                currentExportData.push({ 
-                    "日期": record.record_date, "線別": record.line_name, "機台": record.machines.name, 
-                    "開線時間": record.start_time, "結束時間": record.end_time, "提早結束": record.early_end_time || '-',
-                    "有輪休": record.is_rolling_break ? '是' : '否', 
-                    "實際可用時間(分)": actualAvailMin, "停機明細": downtimeStrForExcel,
-                    "總停機(分)": recordDowntime, "稼動率(%)": recordOEE.toFixed(2) + '%' 
-                });
-                
-                detailHTML += `<tr><td>${record.record_date}</td><td>${record.line_name}</td><td>${record.machines.name}</td><td>${actualAvailMin} 分鐘</td><td style="text-align:left; line-height:1.5;">${downtimeStrForHTML}</td><td style="color:#e53e3e; font-weight:bold;">${recordDowntime} 分鐘</td><td>${recordOEE.toFixed(2)}%</td></tr>`;
+            // ★ 步驟 1：先將資料依照機台分組，方便計算每台機台的小計
+            const groupedRecords = {};
+            records.forEach(r => {
+                const key = r.line_name + '|||' + r.machines.name;
+                if(!groupedRecords[key]) groupedRecords[key] = [];
+                groupedRecords[key].push(r);
             });
+
+            // ★ 步驟 2：針對每台機台進行運算與產生表格列
+            for (const key in groupedRecords) {
+                const machineRecords = groupedRecords[key];
+                
+                let machineTotalAvail = 0;
+                let machineTotalDowntime = 0;
+                let mName = machineRecords[0].machines.name;
+                let lName = machineRecords[0].line_name;
+
+                machineRecords.forEach(record => {
+                    const plannedMin = getMinutesDiff(record.start_time, record.end_time);
+                    let earlyEndMin = record.early_end_time ? getMinutesDiff(record.early_end_time, record.end_time) : 0; 
+                    if (earlyEndMin < 0) earlyEndMin = 0;
+                    
+                    const actualEndTimeStr = record.early_end_time ? record.early_end_time : record.end_time;
+                    const [aH, aM] = actualEndTimeStr.split(':').map(Number);
+                    const actualEndMins = (aH * 60) + aM;
+                    
+                    let breakDeduction = 0;
+                    if (!record.is_rolling_break && actualEndMins > 720) {
+                        breakDeduction = 60;
+                    }
+                    
+                    const actualAvailMin = plannedMin - earlyEndMin - breakDeduction; 
+                    totalActualAvailTime += actualAvailMin;
+                    machineTotalAvail += actualAvailMin; // 累加機台可用時間
+
+                    let recordDowntime = 0; let recordReasonMap = {}; 
+                    
+                    if (record.downtime_events) {
+                        record.downtime_events.forEach(event => {
+                            const duration = event.duration_minutes; const rName = event.downtime_reasons.name;
+                            recordDowntime += duration; 
+                            grandTotalDowntime += duration;
+                            machineTotalDowntime += duration; // 累加機台停機時間
+                            reasonDowntimeMap[rName] = (reasonDowntimeMap[rName] || 0) + duration;
+                            recordReasonMap[rName] = (recordReasonMap[rName] || 0) + duration;
+                        });
+                    }
+                    
+                    let recordOEE = actualAvailMin > 0 ? ((actualAvailMin - recordDowntime) / actualAvailMin) * 100 : 0;
+                    let downtimeStrForExcel = Object.entries(recordReasonMap).map(([r, t]) => `${r}: ${t}分`).join('\n') || '無';
+                    let downtimeStrForHTML = Object.entries(recordReasonMap).map(([r, t]) => `${r}: <span style="color:#e53e3e;font-weight:bold;">${t}分</span>`).join('<br>') || '-';
+
+                    currentExportData.push({ 
+                        "日期": record.record_date, "線別": record.line_name, "機台": record.machines.name, 
+                        "開線時間": record.start_time, "結束時間": record.end_time, "提早結束": record.early_end_time || '-',
+                        "有輪休": record.is_rolling_break ? '是' : '否', 
+                        "實際可用時間(分)": actualAvailMin, "停機明細": downtimeStrForExcel,
+                        "總停機(分)": recordDowntime, "稼動率(%)": recordOEE.toFixed(2) + '%' 
+                    });
+                    
+                    detailHTML += `<tr><td>${record.record_date}</td><td>${record.line_name}</td><td>${record.machines.name}</td><td>${actualAvailMin} 分鐘</td><td style="text-align:left; line-height:1.5;">${downtimeStrForHTML}</td><td style="color:#e53e3e; font-weight:bold;">${recordDowntime} 分鐘</td><td>${recordOEE.toFixed(2)}%</td></tr>`;
+                });
+
+                // ★ 產生該機台的「區間小計列」
+                let machineOEE = machineTotalAvail > 0 ? ((machineTotalAvail - machineTotalDowntime) / machineTotalAvail) * 100 : 0;
+                detailHTML += `
+                    <tr style="background-color: #ebf8ff; font-weight: bold; border-top: 2px solid #90cdf4; border-bottom: 2px solid #90cdf4;">
+                        <td colspan="3" style="text-align: right; color: #2b6cb0;">【${mName}】區間小計：</td>
+                        <td style="color: #2b6cb0;">${machineTotalAvail} 分鐘</td>
+                        <td style="color: #718096; font-size: 0.9em;">(以上為此機台加總)</td>
+                        <td style="color: #e53e3e;">${machineTotalDowntime} 分鐘</td>
+                        <td style="color: #3182ce; font-size: 1.1em;">${machineOEE.toFixed(2)}%</td>
+                    </tr>
+                `;
+            }
 
             document.getElementById('statDetailBody').innerHTML = detailHTML;
 
@@ -633,7 +661,7 @@
             downtimeChartInstance = new Chart(ctx, { type: 'pie', data: { labels: pieLabels, datasets: [{ data: Object.values(reasonDowntimeMap), backgroundColor: Object.keys(reasonDowntimeMap).map(() => `hsl(${Math.random() * 360}, 70%, 60%)`) }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' }, title: { display: true, text: '各停機項目時間總佔比', font: { size: 16 } } } } });
         }
 
-        function exportToExcel() { if (currentExportData.length === 0) return alert('請先查詢資料！'); const ws = XLSX.utils.json_to_sheet(currentExportData); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "OEE紀錄"); XLSX.writeFile(wb, `SMT_OEE統計表_${new Date().toISOString().slice(0, 10)}.xlsx`); }
+        function exportToExcel() { if (currentExportData.length === 0) return alert('請先查詢資料！'); const ws = XLSX.utils.json_to_sheet(currentExportData); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "OEE紀錄"); XLSX.writeFile(wb, `中科廠_OEE統計表_${new Date().toISOString().slice(0, 10)}.xlsx`); }
         function switchPage(pageId, title) { document.querySelectorAll('.page-section').forEach(s => s.style.display = 'none'); document.getElementById(pageId).style.display = 'block'; document.getElementById('page-title').innerText = title; document.querySelectorAll('.nav-links a').forEach(l => l.classList.remove('active')); document.getElementById('nav-' + pageId).classList.add('active'); }
         function toggleSidebar() { const sidebar = document.getElementById('sidebar'); sidebar.style.display = sidebar.style.display === 'none' || sidebar.style.display === '' ? 'flex' : 'none'; }
     </script>
