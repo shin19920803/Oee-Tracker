@@ -3,11 +3,23 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let currentDowntimeEvents = [];
+let downtimeChartInstance = null; // 儲存圖表實例
+let currentExportData = []; // 暫存要匯出給 Excel 的資料
 
 document.addEventListener('DOMContentLoaded', () => {
     fetchMachines();
     fetchReasons();
+    
+    // 預設日期為今天
     document.getElementById('recordDate').valueAsDate = new Date();
+    document.getElementById('statStartDate').valueAsDate = new Date();
+    document.getElementById('statEndDate').valueAsDate = new Date();
+
+    // ======= 新增：讀取 localStorage 記憶的線別 =======
+    const savedLine = localStorage.getItem('smtSavedLine');
+    if (savedLine) {
+        document.getElementById('recordLine').value = savedLine;
+    }
 });
 
 // ================= 機台相關功能 =================
@@ -17,8 +29,12 @@ async function fetchMachines() {
     
     const list = document.getElementById('machineList');
     list.innerHTML = '';
-    const select = document.getElementById('recordMachine');
-    select.innerHTML = '<option value="">請選擇機台</option>';
+    
+    const recordSelect = document.getElementById('recordMachine');
+    recordSelect.innerHTML = '<option value="">請選擇機台</option>';
+
+    const statSelect = document.getElementById('statMachine');
+    statSelect.innerHTML = '<option value="">全部機台</option>';
 
     data.forEach(machine => {
         list.innerHTML += `
@@ -30,7 +46,8 @@ async function fetchMachines() {
                 </div>
             </li>
         `;
-        select.innerHTML += `<option value="${machine.id}">${machine.name}</option>`;
+        recordSelect.innerHTML += `<option value="${machine.id}">${machine.name}</option>`;
+        statSelect.innerHTML += `<option value="${machine.id}">${machine.name}</option>`;
     });
 }
 
@@ -153,6 +170,9 @@ async function submitDailyRecord() {
         return alert('請完整填寫：日期、線別、機台、開線與結束時間！');
     }
 
+    // ======= 新增：記憶線別到 localStorage =======
+    localStorage.setItem('smtSavedLine', line);
+
     const { data: recordData, error: recordError } = await db.from('production_records').insert([{
         record_date: date,
         line_name: line,
@@ -178,7 +198,7 @@ async function submitDailyRecord() {
     }
 
     alert('報工儲存成功！');
-    document.getElementById('recordLine').value = '';
+    // 清空表單，保留線別與日期
     document.getElementById('recordMachine').value = '';
     document.getElementById('startTime').value = '';
     document.getElementById('endTime').value = '';
@@ -186,6 +206,161 @@ async function submitDailyRecord() {
     document.getElementById('isRollingBreak').checked = false;
     currentDowntimeEvents = [];
     renderDowntimeTable();
+}
+
+// ================= 統計與導出邏輯 =================
+
+// 計算兩時間差距(分鐘)
+function getMinutesDiff(start, end) {
+    if (!start || !end) return 0;
+    const [sH, sM] = start.split(':').map(Number);
+    const [eH, eM] = end.split(':').map(Number);
+    return (eH * 60 + eM) - (sH * 60 + sM);
+}
+
+async function queryStatistics() {
+    const startDate = document.getElementById('statStartDate').value;
+    const endDate = document.getElementById('statEndDate').value;
+    const machineId = document.getElementById('statMachine').value;
+
+    if (!startDate || !endDate) return alert('請選擇開始與結束日期！');
+
+    // 抓取區間內的紀錄 (包含關聯的機台名稱、停機項目名稱)
+    let query = db.from('production_records')
+        .select('*, machines(name), downtime_events(duration_minutes, downtime_reasons(name))')
+        .gte('record_date', startDate)
+        .lte('record_date', endDate);
+
+    if (machineId) query = query.eq('machine_id', machineId);
+
+    const { data: records, error } = await query;
+    
+    if (error) return alert('查詢統計資料失敗！');
+    if (records.length === 0) {
+        alert('這段期間沒有資料喔！');
+        document.getElementById('statOEE').innerText = '0.0%';
+        document.getElementById('statTotalDowntime').innerText = '0 分鐘';
+        if (downtimeChartInstance) downtimeChartInstance.destroy();
+        currentExportData = [];
+        return;
+    }
+
+    let totalActualAvailTime = 0; // 總實際可用時間
+    let grandTotalDowntime = 0;   // 總停機時間
+    const reasonDowntimeMap = {}; // 用來畫圓餅圖的分類統計
+    
+    currentExportData = []; // 清空之前的匯出資料
+
+    records.forEach(record => {
+        const plannedMin = getMinutesDiff(record.start_time, record.end_time);
+        
+        // 提早結束時間扣除
+        let earlyEndMin = 0;
+        if (record.early_end_time) {
+            earlyEndMin = getMinutesDiff(record.early_end_time, record.end_time);
+            if (earlyEndMin < 0) earlyEndMin = 0; 
+        }
+        
+        // 午休時間扣除 (若輪休則不扣)
+        const breakMin = record.is_rolling_break ? 0 : 60;
+
+        const actualAvailMin = plannedMin - earlyEndMin - breakMin;
+        totalActualAvailTime += actualAvailMin;
+
+        let recordDowntime = 0;
+        if (record.downtime_events && record.downtime_events.length > 0) {
+            record.downtime_events.forEach(event => {
+                const duration = event.duration_minutes;
+                const reasonName = event.downtime_reasons.name;
+                
+                recordDowntime += duration;
+                grandTotalDowntime += duration;
+                
+                // 累積各停機項目的時間
+                if (reasonDowntimeMap[reasonName]) {
+                    reasonDowntimeMap[reasonName] += duration;
+                } else {
+                    reasonDowntimeMap[reasonName] = duration;
+                }
+            });
+        }
+
+        let recordOEE = 0;
+        if (actualAvailMin > 0) {
+            recordOEE = ((actualAvailMin - recordDowntime) / actualAvailMin) * 100;
+        }
+
+        // 整理給 Excel 的資料
+        currentExportData.push({
+            "日期": record.record_date,
+            "線別": record.line_name,
+            "機台": record.machines.name,
+            "開線時間": record.start_time,
+            "結束時間": record.end_time,
+            "提早結束": record.early_end_time || '-',
+            "輪休不停機": record.is_rolling_break ? "是" : "否",
+            "實際可用時間(分)": actualAvailMin,
+            "停機總時間(分)": recordDowntime,
+            "稼動率(%)": recordOEE.toFixed(2) + '%'
+        });
+    });
+
+    // 總稼動率計算
+    let totalOEE = 0;
+    if (totalActualAvailTime > 0) {
+        totalOEE = ((totalActualAvailTime - grandTotalDowntime) / totalActualAvailTime) * 100;
+    }
+
+    // 更新畫面上的數字
+    document.getElementById('statOEE').innerText = totalOEE.toFixed(1) + '%';
+    document.getElementById('statTotalDowntime').innerText = grandTotalDowntime + ' 分鐘';
+
+    // 繪製圓餅圖
+    renderChart(reasonDowntimeMap);
+}
+
+// 圓餅圖繪製函數
+function renderChart(reasonDowntimeMap) {
+    const ctx = document.getElementById('downtimeChart').getContext('2d');
+    
+    if (downtimeChartInstance) downtimeChartInstance.destroy();
+
+    const labels = Object.keys(reasonDowntimeMap);
+    const data = Object.values(reasonDowntimeMap);
+
+    if (labels.length === 0) return; // 沒停機紀錄不畫圖
+
+    // 生成隨機顏色
+    const backgroundColors = labels.map(() => `hsl(${Math.random() * 360}, 70%, 60%)`);
+
+    downtimeChartInstance = new Chart(ctx, {
+        type: 'pie',
+        data: {
+            labels: labels,
+            datasets: [{ data: data, backgroundColor: backgroundColors }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'right' },
+                title: { display: true, text: '各停機項目時間佔比' }
+            }
+        }
+    });
+}
+
+// 匯出 Excel
+function exportToExcel() {
+    if (currentExportData.length === 0) {
+        return alert('請先查詢資料，再點擊匯出！');
+    }
+    const worksheet = XLSX.utils.json_to_sheet(currentExportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "OEE稼動率紀錄");
+    
+    const dateStr = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(workbook, `SMT_OEE統計表_${dateStr}.xlsx`);
 }
 
 // ================= 介面互動 =================
