@@ -98,12 +98,10 @@
             <div id="daily-record" class="page-section" style="display: none;">
                 <div class="section" style="border-top: 4px solid #4a5568;">
                     <h2>1. 生產基本資料</h2>
-                    
                     <div style="margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid #e2e8f0;">
                         <label style="font-weight: bold; font-size: 14px; color: #4a5568; display: block; margin-bottom: 5px;">日期</label>
                         <input type="date" id="recordDate" onchange="loadRecordsByDate()" style="max-width: 250px;">
                     </div>
-
                     <div class="form-grid">
                         <div><label>線別</label><select id="recordLine" onchange="onLineSelectionChange()"><option value="">請先至基礎設定新增</option></select></div>
                         <div>
@@ -183,8 +181,13 @@
                 </div>
 
                 <div class="section" style="margin-top: 20px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <h2>統計結果</h2>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <div style="display: flex; align-items: center; gap: 15px;">
+                            <h2 style="margin: 0;">統計結果</h2>
+                            <select id="summaryMachineFilter" onchange="renderSummaryAndChart()" style="padding: 5px 10px; border-radius: 4px; border: 1px solid #cbd5e0; min-width: 150px; font-size: 16px; font-weight: bold; color: #3182ce; background-color: #ebf8ff;">
+                                <option value="">請先查詢資料</option>
+                            </select>
+                        </div>
                         <button class="edit-btn" style="background-color: #38a169; font-size: 14px; padding: 8px 15px;" onclick="exportToExcel()"><i class="fas fa-file-excel"></i> 匯出 EXCEL 明細報表</button>
                     </div>
                     
@@ -193,15 +196,7 @@
                         <div class="card downtime-card"><h3>非計畫停機總和 (稼動損失)</h3><div id="statTotalDowntime">0 分鐘</div></div>
                     </div>
 
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 30px; border-bottom: 2px solid #cbd5e0; padding-bottom: 10px;">
-                        <h3 style="margin: 0; color: #2c3e50;"><i class="fas fa-clipboard-list"></i> 區間停機總和統整</h3>
-                        <div>
-                            <label style="font-size: 14px; font-weight: bold; color: #4a5568;">檢視特定機台：</label>
-                            <select id="summaryMachineFilter" onchange="renderSummaryAndChart()" style="padding: 5px; border-radius: 4px; border: 1px solid #cbd5e0; min-width: 150px;">
-                                <option value="">全部機台加總</option>
-                            </select>
-                        </div>
-                    </div>
+                    <h3 style="margin-top: 30px; border-bottom: 2px solid #cbd5e0; padding-bottom: 10px; color: #2c3e50;"><i class="fas fa-clipboard-list"></i> 區間停機總和統整</h3>
                     <table class="data-table">
                         <thead>
                             <tr>
@@ -218,7 +213,7 @@
 
                     <div class="chart-container"><canvas id="downtimeChart"></canvas></div>
 
-                    <h3 style="margin-top: 40px; border-bottom: 2px solid #cbd5e0; padding-bottom: 10px; color: #2c3e50;"><i class="fas fa-list"></i> 每日機台明細</h3>
+                    <h3 style="margin-top: 40px; border-bottom: 2px solid #cbd5e0; padding-bottom: 10px; color: #2c3e50;"><i class="fas fa-list"></i> 每日機台明細 (依查詢條件顯示)</h3>
                     <div style="overflow-x: auto;">
                         <table class="data-table" style="min-width: 800px;">
                             <thead>
@@ -310,7 +305,7 @@
         let currentExportData = [];
         let allMachines = []; 
         let allLines = [];
-        let currentQueriedRecords = [];
+        let currentQueriedRecords = []; 
 
         document.addEventListener('DOMContentLoaded', () => {
             populateTimeSelects();
@@ -530,6 +525,7 @@
             renderDowntimeTable(); await db.from('production_records').delete().eq('id', id); loadRecordsByDate(); window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
+        // ================= ★ OEE 統計邏輯 (頂部儀表板跟隨機台切換) ★ =================
         function getMinutesDiff(start, end) {
             if (!start || !end) return 0; const [sH, sM] = start.split(':').map(Number); const [eH, eM] = end.split(':').map(Number); return (eH * 60 + eM) - (sH * 60 + sM);
         }
@@ -552,18 +548,21 @@
                 document.getElementById('statSummaryBody').innerHTML = '<tr><td colspan="4" style="text-align:center;">無資料</td></tr>';
                 document.getElementById('statDetailBody').innerHTML = '<tr><td colspan="8" style="text-align:center;">無資料</td></tr>';
                 if (downtimeChartInstance) downtimeChartInstance.destroy(); currentExportData = []; 
-                document.getElementById('summaryMachineFilter').innerHTML = '<option value="">全部機台加總</option>';
+                document.getElementById('summaryMachineFilter').innerHTML = '<option value="">請重新查詢</option>';
                 return; 
             }
 
+            // 1. 建立頂部的機台切換下拉選單 (只列出被查詢到的機台，不放「全部加總」選項)
             const summarySelect = document.getElementById('summaryMachineFilter');
-            summarySelect.innerHTML = '<option value="">全部機台加總</option>';
+            summarySelect.innerHTML = '';
             const uniqueMachinesInQuery = {};
             records.forEach(r => uniqueMachinesInQuery[r.machine_id] = r.machines.name);
+            
             for (const [id, name] of Object.entries(uniqueMachinesInQuery)) {
                 summarySelect.innerHTML += `<option value="${id}">${name}</option>`;
             }
 
+            // 2. 建立下方「每日機台明細」與「Excel導出資料」(這裡依然會顯示查詢出來的所有明細)
             currentExportData = []; let detailHTML = '';
             records.forEach(record => {
                 const plannedMin = getMinutesDiff(record.start_time, record.end_time);
@@ -640,18 +639,19 @@
 
             document.getElementById('statDetailBody').innerHTML = detailHTML;
 
+            // 3. 呼叫單一機台的圖表與數據渲染 (預設會帶入第一個機台)
             renderSummaryAndChart();
         }
 
+        // 只計算與渲染下拉選單所選擇的該台機台數據
         function renderSummaryAndChart() {
             if (!currentQueriedRecords || currentQueriedRecords.length === 0) return;
 
             const selectedMachineId = document.getElementById('summaryMachineFilter').value;
-            let filteredRecords = currentQueriedRecords;
+            if (!selectedMachineId) return; 
 
-            if (selectedMachineId) {
-                filteredRecords = currentQueriedRecords.filter(r => r.machine_id === selectedMachineId);
-            }
+            // 只過濾出被選擇的這台機台的紀錄
+            let filteredRecords = currentQueriedRecords.filter(r => r.machine_id === selectedMachineId);
 
             let totalActualAvailTime = 0; 
             let grandTotalUnplannedDowntime = 0; 
@@ -690,12 +690,15 @@
 
             let totalOEE = totalActualAvailTime > 0 ? ((totalActualAvailTime - grandTotalUnplannedDowntime) / totalActualAvailTime) * 100 : 0;
             
+            // ★ 更新最上方的兩張卡片
             document.getElementById('statOEE').innerText = totalOEE.toFixed(1) + '%'; 
             document.getElementById('statTotalDowntime').innerText = grandTotalUnplannedDowntime + ' 分鐘';
 
+            // ★ 更新中間的統整表格
             let summaryDowntimeStr = Object.entries(reasonDowntimeMap).map(([r, t]) => `${r}: <span style="font-weight:bold;">${t}分</span>`).join('<br>') || '無停機紀錄';
             document.getElementById('statSummaryBody').innerHTML = `<tr><td>${totalActualAvailTime} 分鐘</td><td style="text-align:left; line-height:1.5;">${summaryDowntimeStr}</td><td style="color:#e53e3e; font-weight:bold; font-size:1.1rem;">${grandTotalUnplannedDowntime} 分鐘</td><td style="font-size:1.2rem; font-weight:bold; color:#3182ce;">${totalOEE.toFixed(2)}%</td></tr>`;
 
+            // ★ 更新圓餅圖
             const ctx = document.getElementById('downtimeChart').getContext('2d'); if (downtimeChartInstance) downtimeChartInstance.destroy();
             
             let sumForAllPie = Object.values(reasonDowntimeMap).reduce((a, b) => a + b, 0);
@@ -703,7 +706,7 @@
                 const pieLabels = Object.keys(reasonDowntimeMap).map(k => `${k} (${((reasonDowntimeMap[k] / sumForAllPie) * 100).toFixed(1)}%)`);
                 downtimeChartInstance = new Chart(ctx, { type: 'pie', data: { labels: pieLabels, datasets: [{ data: Object.values(reasonDowntimeMap), backgroundColor: Object.keys(reasonDowntimeMap).map(() => `hsl(${Math.random() * 360}, 70%, 60%)`) }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' }, title: { display: true, text: '各停機項目時間總佔比 (含計畫與非計畫)', font: { size: 16 } } } } });
             } else {
-                downtimeChartInstance = new Chart(ctx, { type: 'pie', data: { labels: ['無停機'], datasets: [{ data: [1], backgroundColor: ['#e2e8f0'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, title: { display: true, text: '此區間無任何停機紀錄', font: { size: 16 } }, tooltip: { enabled: false } } } });
+                downtimeChartInstance = new Chart(ctx, { type: 'pie', data: { labels: ['無停機'], datasets: [{ data: [1], backgroundColor: ['#e2e8f0'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, title: { display: true, text: '此期間此機台無任何停機紀錄', font: { size: 16 } }, tooltip: { enabled: false } } } });
             }
         }
 
