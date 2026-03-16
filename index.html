@@ -330,7 +330,6 @@
             document.getElementById('statStartDate').valueAsDate = today;
             document.getElementById('statEndDate').valueAsDate = today;
             
-            // ★ 修改：預設開線 08:30，結束 17:30
             document.getElementById('startHour').value = '08';
             document.getElementById('startMinute').value = '30';
             document.getElementById('endHour').value = '17';
@@ -364,6 +363,7 @@
             if (h && m) return `${h}:${m}`; return null;
         }
 
+        // ★ 修改：加入 width:auto 確保在手機版展開時橫向顯示
         function generateTimePickerHTML(idPrefix, timeStr) {
             const hours24 = Array.from({length: 24}, (_, i) => String(i).padStart(2, '0'));
             const minutes60 = Array.from({length: 60}, (_, i) => String(i).padStart(2, '0'));
@@ -376,10 +376,9 @@
             let mHTML = '';
             minutes60.forEach(min => { mHTML += `<option value="${min}" ${min===m ? 'selected' : ''}>${min}</option>`; });
 
-            return `<select id="${idPrefix}Hour" style="padding:5px; border-radius:4px; border:1px solid #cbd5e0;">${hHTML}</select> : <select id="${idPrefix}Minute" style="padding:5px; border-radius:4px; border:1px solid #cbd5e0;">${mHTML}</select>`;
+            return `<select id="${idPrefix}Hour" style="padding:5px; border-radius:4px; border:1px solid #cbd5e0; width:auto;">${hHTML}</select> <span style="font-weight:bold; margin:0 5px;">:</span> <select id="${idPrefix}Minute" style="padding:5px; border-radius:4px; border:1px solid #cbd5e0; width:auto;">${mHTML}</select>`;
         }
 
-        // ================= ★ 全新：休息時間扣除計算邏輯 ★ =================
         function calculateActualAvailMin(startStr, endStr, isRollingBreak) {
             if (!startStr || !endStr) return 0;
             const [sH, sM] = startStr.split(':').map(Number);
@@ -390,7 +389,6 @@
             let availMin = endMin - startMin;
             if (availMin < 0) return 0;
 
-            // 1. 午休 12:00 (720) ~ 13:00 (780)
             if (!isRollingBreak) {
                 if (startMin < 780 && endMin > 720) {
                     const overlap = Math.min(endMin, 780) - Math.max(startMin, 720);
@@ -398,7 +396,6 @@
                 }
             }
 
-            // 2. 晚餐休息 17:30 (1050) ~ 18:00 (1080)
             if (startMin < 1080 && endMin > 1050) {
                 const overlap = Math.min(endMin, 1080) - Math.max(startMin, 1050);
                 availMin -= overlap;
@@ -534,7 +531,7 @@
 
             const { data: recordData, error: recordError } = await db.from('production_records').insert([{
                 record_date: date, line_name: line, machine_id: machineId, start_time: startTime,
-                end_time: endTime, early_end_time: null, is_rolling_break: isRollingBreak // early_end_time 已移除，塞null
+                end_time: endTime, early_end_time: null, is_rolling_break: isRollingBreak
             }]).select();
 
             if (recordError) return alert('主紀錄儲存失敗：' + recordError.message);
@@ -560,7 +557,6 @@
         function renderDailyHistoryTable() {
             const tbody = document.getElementById('dailyHistoryTable'); tbody.innerHTML = '';
             if (loadedDailyRecords.length === 0) {
-                // ★ 修改：配合移除提早結束，colspan 為 6
                 tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">本日尚無機台紀錄。</td></tr>';
                 return;
             }
@@ -574,8 +570,8 @@
                                 <i class="fas fa-edit"></i> 編輯明細：${record.line_name} - ${record.machines.name}
                             </div>
                             <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 10px; align-items: center; background:#fff; padding:10px; border-radius:6px; border:1px solid #e2e8f0;">
-                                <div><b>開線:</b> ${generateTimePickerHTML('editStart', record.start_time)}</div>
-                                <div><b>結束:</b> ${generateTimePickerHTML('editEnd', record.end_time)}</div>
+                                <div style="display:flex; align-items:center;"><b>開線:</b>&nbsp; ${generateTimePickerHTML('editStart', record.start_time)}</div>
+                                <div style="display:flex; align-items:center;"><b>結束:</b>&nbsp; ${generateTimePickerHTML('editEnd', record.end_time)}</div>
                                 <div style="display: flex; align-items: center; gap: 5px;">
                                     <input type="checkbox" id="editRolling" ${record.is_rolling_break ? 'checked' : ''} style="transform: scale(1.3); cursor:pointer;"> 
                                     <label for="editRolling" style="cursor:pointer; font-weight:bold; color:#4a5568;">輪休不停機</label>
@@ -587,9 +583,9 @@
                                     ${generateInlineDowntimeListHTML()}
                                 </div>
                                 <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top:10px; border-top:1px dashed #e2e8f0; padding-top:10px;">
-                                    <select id="editDtReason" style="padding:5px; border-radius:4px; border:1px solid #cbd5e0;">${document.getElementById('downtimeReasonSelect').innerHTML}</select>
-                                    <select id="editDtHour" style="padding:5px; border-radius:4px; border:1px solid #cbd5e0;">${document.getElementById('downtimeHour').innerHTML}</select>
-                                    <select id="editDtMinute" style="padding:5px; border-radius:4px; border:1px solid #cbd5e0;">${document.getElementById('downtimeMinute').innerHTML}</select>
+                                    <select id="editDtReason" style="padding:5px; border-radius:4px; border:1px solid #cbd5e0; width:auto;">${document.getElementById('downtimeReasonSelect').innerHTML}</select>
+                                    <select id="editDtHour" style="padding:5px; border-radius:4px; border:1px solid #cbd5e0; width:auto;">${document.getElementById('downtimeHour').innerHTML}</select>
+                                    <select id="editDtMinute" style="padding:5px; border-radius:4px; border:1px solid #cbd5e0; width:auto;">${document.getElementById('downtimeMinute').innerHTML}</select>
                                     <button onclick="addInlineDowntime()" style="background-color:#ecc94b; color:#744210; padding:5px 15px; border-radius:4px; border:none; cursor:pointer; font-weight:bold;"><i class="fas fa-plus"></i> 加入停機</button>
                                 </div>
                             </div>
@@ -689,7 +685,6 @@
 
             if (!startTime || !endTime) return alert('開線與結束時間必填！');
 
-            // ★ 修改：提早結束時間直接給 null 清除
             const { error: recordError } = await db.from('production_records').update({
                 start_time: startTime, end_time: endTime, early_end_time: null, is_rolling_break: isRollingBreak
             }).eq('id', recordId);
@@ -738,7 +733,6 @@
 
             currentExportData = []; let detailHTML = '';
             records.forEach(record => {
-                // ★ 使用全新的休息扣除函數計算總可用時間
                 const plannedActualMin = calculateActualAvailMin(record.start_time, record.end_time, record.is_rolling_break);
                 
                 let recordPlannedDowntime = 0;
@@ -766,7 +760,6 @@
                         "有輪休": record.is_rolling_break ? '是' : '否', "計畫性停機扣除(分)": recordPlannedDowntime, "實際可用時間(分)": actualAvailMin, 
                         "停機項目": "無", "屬性": "-", "該項停機(分)": 0, "非計畫總停機(損失分)": 0, "稼動率(%)": recordOEE.toFixed(2) + '%' 
                     });
-                    // ★ 修正無停機的 8 欄位對齊
                     detailHTML += `<tr><td>${record.record_date}</td><td>${record.line_name}</td><td>${record.machines.name}</td><td>${actualAvailMin}</td><td>無</td><td>-</td><td style="color:#e53e3e; font-weight:bold;">0</td><td>${recordOEE.toFixed(2)}%</td></tr>`;
                 } else {
                     rKeys.forEach((rName, idx) => {
