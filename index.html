@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SMT 機台稼動率統計系統</title>
-    <link rel="stylesheet" href="style.css?v=7">
+    <link rel="stylesheet" href="style.css?v=8">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -42,7 +42,7 @@
                         </div>
                         <div>
                             <label>線別</label>
-                            <select id="recordLine"><option value="">請先至基礎設定新增</option></select>
+                            <select id="recordLine" onchange="onLineSelectionChange()"><option value="">請先至基礎設定新增</option></select>
                         </div>
                         <div>
                             <label>開線時間 (24H)</label>
@@ -64,7 +64,7 @@
                     <div class="form-grid">
                         <div>
                             <label>機台名稱</label>
-                            <select id="recordMachine"><option value="">請先至基礎設定新增</option></select>
+                            <select id="recordMachine"><option value="">請先選擇上方線別</option></select>
                         </div>
                         <div>
                             <label>提早結束時間 (選填)</label>
@@ -147,14 +147,17 @@
                         </div>
                         <ul id="lineList"></ul>
                     </div>
+                    
                     <div class="section">
                         <h2>機台清單</h2>
                         <div class="input-group">
-                            <input type="text" id="machineName" placeholder="例: NXT-III">
+                            <select id="machineLineSelect" style="flex: 1;"><option value="">綁定線別</option></select>
+                            <input type="text" id="machineName" placeholder="例: NXT-III" style="flex: 2;">
                             <button onclick="addMachine()">新增</button>
                         </div>
                         <ul id="machineList"></ul>
                     </div>
+
                     <div class="section">
                         <h2>停機項目清單</h2>
                         <div class="input-group">
