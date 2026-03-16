@@ -96,3 +96,36 @@ async function deleteReason(id) {
     if (error) alert('刪除失敗');
     else fetchReasons();
 }
+// ================= 介面互動與顯示邏輯 =================
+
+// 切換頁面顯示
+function switchPage(pageId, title) {
+    // 1. 隱藏所有的 page-section
+    const sections = document.querySelectorAll('.page-section');
+    sections.forEach(section => {
+        section.style.display = 'none';
+    });
+
+    // 2. 顯示被點擊的那個區塊
+    document.getElementById(pageId).style.display = 'block';
+
+    // 3. 更改上方的標題
+    document.getElementById('page-title').innerText = title;
+
+    // 4. 更新左側選單的「發亮(active)」狀態
+    document.querySelectorAll('.nav-links a').forEach(link => {
+        link.classList.remove('active');
+    });
+    // 找出當前點擊的 <a> 標籤並加上 active class
+    document.getElementById('nav-' + pageId).classList.add('active');
+}
+
+// 漢堡選單：收合/展開側邊欄
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar.style.display === 'none' || sidebar.style.display === '') {
+        sidebar.style.display = 'flex';
+    } else {
+        sidebar.style.display = 'none';
+    }
+}
