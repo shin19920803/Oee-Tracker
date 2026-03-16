@@ -17,7 +17,13 @@ header { background: #fff; padding: 15px 20px; box-shadow: 0 2px 4px rgba(0,0,0,
 
 .section { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); flex: 1; }
 .input-group { display: flex; gap: 10px; margin-bottom: 15px; }
-input[type="text"], input[type="time"], input[type="date"], input[type="number"], select { padding: 10px; border: 1px solid #cbd5e0; border-radius: 4px; box-sizing: border-box; width: 100%; }
+
+/* ======== 新增：自製 24H 時間選單排版 ======== */
+.time-picker { display: flex; align-items: center; gap: 5px; }
+.time-picker select { flex: 1; padding: 10px; border: 1px solid #cbd5e0; border-radius: 4px; box-sizing: border-box; }
+.time-picker span { font-weight: bold; color: #4a5568; }
+
+input[type="text"], input[type="date"], input[type="number"], select { padding: 10px; border: 1px solid #cbd5e0; border-radius: 4px; box-sizing: border-box; width: 100%; }
 button { padding: 10px 15px; background-color: #3182ce; color: white; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap; }
 button:hover { background-color: #2b6cb0; }
 
