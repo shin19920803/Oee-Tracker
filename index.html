@@ -4,8 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SMT 機台稼動率統計系統</title>
-    <link rel="stylesheet" href="style.css?v=5">
-    
+    <link rel="stylesheet" href="style.css?v=6">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -33,44 +32,69 @@
         <div class="content-wrapper">
             
             <div id="daily-record" class="page-section" style="display: none;">
-                <div class="section">
-                    <h2>生產基本資料</h2>
+                
+                <div class="section" style="border-top: 4px solid #4a5568;">
+                    <h2>1. 生產基本資料 (今日共用)</h2>
                     <div class="form-grid">
-                        <div><label>日期</label><input type="date" id="recordDate"></div>
-                        <div><label>線別 (自動記憶)</label><input type="text" id="recordLine" placeholder="例: SMT-1線"></div>
                         <div>
-                            <label>機台</label>
-                            <select id="recordMachine"><option value="">請先至基礎設定新增</option></select>
+                            <label>日期</label>
+                            <input type="date" id="recordDate" onchange="loadRecordsByDate()">
+                        </div>
+                        <div>
+                            <label>線別</label>
+                            <select id="recordLine"><option value="">請先至基礎設定新增</option></select>
                         </div>
                         <div><label>開線時間</label><input type="time" id="startTime"></div>
                         <div><label>結束時間</label><input type="time" id="endTime"></div>
-                        <div><label>提早結束時間 (選填)</label><input type="time" id="earlyEndTime"></div>
-                        <div class="checkbox-container">
-                            <input type="checkbox" id="isRollingBreak">
-                            <label for="isRollingBreak">是否輪休 (打勾代表中午不休)</label>
+                    </div>
+                </div>
+
+                <div class="section" style="margin-top: 20px; border-top: 4px solid #3182ce;">
+                    <h2>2. 新增機台與停機紀錄</h2>
+                    <div class="form-grid">
+                        <div>
+                            <label>機台名稱</label>
+                            <select id="recordMachine"><option value="">請先至基礎設定新增</option></select>
                         </div>
+                        <div><label>提早結束時間 (選填)</label><input type="time" id="earlyEndTime"></div>
+                    </div>
+
+                    <div style="background-color: #f7fafc; padding: 15px; border-radius: 8px; margin-top: 15px;">
+                        <h3 style="margin-top: 0; font-size: 1rem;">機台停機輸入</h3>
+                        <div class="input-group">
+                            <select id="downtimeReasonSelect" style="flex: 2;"><option value="">請選擇停機項目</option></select>
+                            <input type="number" id="downtimeDuration" placeholder="時間(分鐘，限5的倍數)" step="5" min="5" style="flex: 1;">
+                            <button onclick="addDowntimeToList()">加入停機</button>
+                        </div>
+                        <table class="data-table">
+                            <thead><tr><th>停機項目</th><th>時間 (分鐘)</th><th>操作</th></tr></thead>
+                            <tbody id="downtimeTableBody"></tbody>
+                        </table>
+                        <div class="total-summary">此機台總停機： <span id="totalDowntimeDisplay">0</span> 分鐘</div>
+                    </div>
+
+                    <div style="text-align: right; margin-top: 15px;">
+                        <button class="save-btn" onclick="submitMachineRecord()"><i class="fas fa-plus-circle"></i> 儲存此機台紀錄</button>
                     </div>
                 </div>
 
-                <div class="section" style="margin-top: 20px;">
-                    <h2>停機紀錄輸入</h2>
-                    <div class="input-group">
-                        <select id="downtimeReasonSelect" style="flex: 2; padding: 10px; border: 1px solid #cbd5e0; border-radius: 4px;">
-                            <option value="">請選擇停機項目</option>
-                        </select>
-                        <input type="number" id="downtimeDuration" placeholder="時間(分鐘，限5的倍數)" step="5" min="5" style="flex: 1;">
-                        <button onclick="addDowntimeToList()">新增停機</button>
-                    </div>
-                    
+                <div class="section" style="margin-top: 20px; border-top: 4px solid #38a169;">
+                    <h2>3. 今日已輸入紀錄</h2>
                     <table class="data-table">
-                        <thead><tr><th>停機項目</th><th>時間 (分鐘)</th><th>操作</th></tr></thead>
-                        <tbody id="downtimeTableBody"></tbody>
+                        <thead>
+                            <tr>
+                                <th>線別</th>
+                                <th>機台</th>
+                                <th>開線~結束</th>
+                                <th>提早結束</th>
+                                <th>停機時數</th>
+                                <th>操作 (編輯/刪除)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dailyHistoryTable">
+                            <tr><td colspan="6" style="text-align:center;">請選擇日期以載入紀錄...</td></tr>
+                        </tbody>
                     </table>
-                    <div class="total-summary">目前總停機時間： <span id="totalDowntimeDisplay">0</span> 分鐘</div>
-                </div>
-
-                <div style="text-align: center; margin-top: 20px;">
-                    <button class="save-btn" onclick="submitDailyRecord()"><i class="fas fa-save"></i> 儲存今日報工</button>
                 </div>
             </div>
 
@@ -80,45 +104,39 @@
                     <div class="form-grid">
                         <div><label>開始日期</label><input type="date" id="statStartDate"></div>
                         <div><label>結束日期</label><input type="date" id="statEndDate"></div>
-                        <div>
-                            <label>機台 (不選代表全部)</label>
-                            <select id="statMachine"><option value="">全部機台</option></select>
-                        </div>
-                        <div style="display:flex; align-items:end;">
-                            <button onclick="queryStatistics()" style="width:100%;"><i class="fas fa-search"></i> 查詢統計</button>
-                        </div>
+                        <div><label>機台 (全部)</label><select id="statMachine"><option value="">全部機台</option></select></div>
+                        <div style="display:flex; align-items:end;"><button onclick="queryStatistics()" style="width:100%;"><i class="fas fa-search"></i> 查詢統計</button></div>
                     </div>
                 </div>
-
                 <div class="section" style="margin-top: 20px;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <h2>統計結果</h2>
                         <button class="edit-btn" style="background-color: #38a169;" onclick="exportToExcel()"><i class="fas fa-file-excel"></i> 匯出 EXCEL</button>
                     </div>
-                    
                     <div class="stat-cards">
-                        <div class="card oee-card">
-                            <h3>平均設備稼動率 (OEE)</h3>
-                            <div id="statOEE">0.0%</div>
-                        </div>
-                        <div class="card downtime-card">
-                            <h3>總停機時間</h3>
-                            <div id="statTotalDowntime">0 分鐘</div>
-                        </div>
+                        <div class="card oee-card"><h3>平均設備稼動率 (OEE)</h3><div id="statOEE">0.0%</div></div>
+                        <div class="card downtime-card"><h3>總停機時間</h3><div id="statTotalDowntime">0 分鐘</div></div>
                     </div>
-
-                    <div class="chart-container">
-                        <canvas id="downtimeChart"></canvas>
-                    </div>
+                    <div class="chart-container"><canvas id="downtimeChart"></canvas></div>
                 </div>
             </div>
 
             <div id="basic-settings" class="page-section">
-                <div class="container">
+                <div class="container" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));">
+                    
+                    <div class="section">
+                        <h2>線別清單</h2>
+                        <div class="input-group">
+                            <input type="text" id="lineName" placeholder="例: SMT-1線">
+                            <button onclick="addLine()">新增</button>
+                        </div>
+                        <ul id="lineList"></ul>
+                    </div>
+
                     <div class="section">
                         <h2>機台清單</h2>
                         <div class="input-group">
-                            <input type="text" id="machineName" placeholder="輸入機台名稱">
+                            <input type="text" id="machineName" placeholder="例: NXT-III">
                             <button onclick="addMachine()">新增</button>
                         </div>
                         <ul id="machineList"></ul>
@@ -127,11 +145,12 @@
                     <div class="section">
                         <h2>停機項目清單</h2>
                         <div class="input-group">
-                            <input type="text" id="reasonName" placeholder="輸入停機項目">
+                            <input type="text" id="reasonName" placeholder="例: 首件、異常排除">
                             <button onclick="addReason()">新增</button>
                         </div>
                         <ul id="reasonList"></ul>
                     </div>
+
                 </div>
             </div>
 
