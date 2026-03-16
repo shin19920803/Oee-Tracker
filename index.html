@@ -53,7 +53,7 @@
         .form-grid label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 14px; color: #4a5568; }
 
         .data-table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-        .data-table th, .data-table td { border: 1px solid #e2e8f0; padding: 10px; text-align: center; }
+        .data-table th, .data-table td { border: 1px solid #e2e8f0; padding: 10px; text-align: center; vertical-align: middle; }
         .data-table th { background-color: #f7fafc; font-weight: bold; }
         .total-summary { text-align: right; margin-top: 15px; font-size: 1.1rem; font-weight: bold; color: #e53e3e; }
         .save-btn { background-color: #3182ce; font-size: 16px; padding: 12px 30px; border-radius: 8px; }
@@ -153,20 +153,67 @@
                     <div class="form-grid">
                         <div><label>開始日期</label><input type="date" id="statStartDate"></div>
                         <div><label>結束日期</label><input type="date" id="statEndDate"></div>
-                        <div><label>機台 (全部)</label><select id="statMachine"><option value="">全部機台</option></select></div>
-                        <div style="display:flex; align-items:end;"><button onclick="queryStatistics()" style="width:100%;"><i class="fas fa-search"></i> 查詢統計</button></div>
+                        <div>
+                            <label>線別 (不選代表全部)</label>
+                            <select id="statLine" onchange="onStatLineChange()"><option value="">全部線別</option></select>
+                        </div>
+                        <div>
+                            <label>機台 (不選代表該線全部)</label>
+                            <select id="statMachine"><option value="">全部機台</option></select>
+                        </div>
+                        <div style="display:flex; align-items:end; grid-column: 1 / -1;">
+                            <button onclick="queryStatistics()" style="width:100%; font-size: 16px; padding: 12px;"><i class="fas fa-search"></i> 查詢統計數據</button>
+                        </div>
                     </div>
                 </div>
+
                 <div class="section" style="margin-top: 20px;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <h2>統計結果</h2>
-                        <button class="edit-btn" style="background-color: #38a169;" onclick="exportToExcel()"><i class="fas fa-file-excel"></i> 匯出 EXCEL</button>
+                        <button class="edit-btn" style="background-color: #38a169; font-size: 14px; padding: 8px 15px;" onclick="exportToExcel()"><i class="fas fa-file-excel"></i> 匯出 EXCEL 明細報表</button>
                     </div>
+                    
                     <div class="stat-cards">
                         <div class="card oee-card"><h3>平均設備稼動率 (OEE)</h3><div id="statOEE">0.0%</div></div>
                         <div class="card downtime-card"><h3>總停機時間</h3><div id="statTotalDowntime">0 分鐘</div></div>
                     </div>
+
+                    <h3 style="margin-top: 30px; border-bottom: 2px solid #cbd5e0; padding-bottom: 10px; color: #2c3e50;"><i class="fas fa-clipboard-list"></i> 區間停機總和統整</h3>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>總實際可用時間</th>
+                                <th>各項停機時間總和</th>
+                                <th>總停機時間</th>
+                                <th>總平均稼動率 (OEE)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="statSummaryBody">
+                            <tr><td colspan="4" style="text-align:center;">請先查詢統計資料...</td></tr>
+                        </tbody>
+                    </table>
+
                     <div class="chart-container"><canvas id="downtimeChart"></canvas></div>
+
+                    <h3 style="margin-top: 40px; border-bottom: 2px solid #cbd5e0; padding-bottom: 10px; color: #2c3e50;"><i class="fas fa-list"></i> 每日機台明細</h3>
+                    <div style="overflow-x: auto;">
+                        <table class="data-table" style="min-width: 800px;">
+                            <thead>
+                                <tr>
+                                    <th>日期</th>
+                                    <th>線別</th>
+                                    <th>機台</th>
+                                    <th>實際可用時間</th>
+                                    <th>停機明細 (項目與時間)</th>
+                                    <th>總停機</th>
+                                    <th>稼動率</th>
+                                </tr>
+                            </thead>
+                            <tbody id="statDetailBody">
+                                <tr><td colspan="7" style="text-align:center;">請先查詢統計資料...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
 
@@ -175,7 +222,6 @@
                     
                     <div class="section">
                         <h2><i class="fas fa-network-wired"></i> 線別與機台管理</h2>
-                        
                         <div style="background-color: #f7fafc; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #e2e8f0;">
                             <label style="font-weight: bold; margin-bottom: 10px; display: block; color: #2c3e50;">1. 選擇或新增線別</label>
                             <div class="input-group">
@@ -292,17 +338,20 @@
             
             const recordSelect = document.getElementById('recordLine');
             const settingLineSelect = document.getElementById('settingLineSelect');
+            const statLineSelect = document.getElementById('statLine'); // ★ 統計區線別下拉
             
             const currentRecordVal = recordSelect.value;
             const currentSettingVal = settingLineSelect.value;
+            const currentStatLineVal = statLineSelect.value;
             
             recordSelect.innerHTML = '<option value="">請選擇線別</option>';
-            // ★ 改動：讓下拉選單永遠保留「檢視未綁定」的選項
             settingLineSelect.innerHTML = '<option value="">[檢視未綁定的舊機台]</option>';
+            statLineSelect.innerHTML = '<option value="">全部線別</option>';
 
             allLines.forEach(line => {
                 recordSelect.innerHTML += `<option value="${line.name}">${line.name}</option>`;
                 settingLineSelect.innerHTML += `<option value="${line.id}">${line.name}</option>`;
+                statLineSelect.innerHTML += `<option value="${line.name}">${line.name}</option>`;
             });
 
             if (currentRecordVal && allLines.find(l => l.name === currentRecordVal)) {
@@ -314,29 +363,31 @@
             if (currentSettingVal && allLines.find(l => l.id === currentSettingVal)) {
                 settingLineSelect.value = currentSettingVal;
             } else if (allLines.length > 0) {
-                // 如果有線別，預設選第一個
                 settingLineSelect.value = allLines[0].id; 
             }
 
+            if (currentStatLineVal && allLines.find(l => l.name === currentStatLineVal)) {
+                statLineSelect.value = currentStatLineVal;
+            }
+
             onSettingLineChange();
+            onStatLineChange(); // 更新統計的機台下拉
         }
 
         function onSettingLineChange() {
             const settingSelect = document.getElementById('settingLineSelect');
             const displaySpan = document.getElementById('currentSettingLineDisplay');
             
-            // ★ 改動：如果是空值，就顯示正在檢視舊機台
             if (!settingSelect.value) {
                 displaySpan.innerText = '未綁定舊機台';
-                displaySpan.style.color = '#e53e3e'; // 紅色警示
+                displaySpan.style.color = '#e53e3e'; 
             } else {
                 displaySpan.innerText = settingSelect.options[settingSelect.selectedIndex].text;
-                displaySpan.style.color = '#3182ce'; // 藍色正常
+                displaySpan.style.color = '#3182ce'; 
             }
             renderSettingMachineList();
         }
 
-        // ★ 改動：顯示機台清單的邏輯強化，支援顯示「未綁定機台」
         function renderSettingMachineList() {
             const settingSelect = document.getElementById('settingLineSelect');
             const machineList = document.getElementById('settingMachineList');
@@ -346,14 +397,12 @@
             let targetMachines = [];
 
             if (!lineId) {
-                // 如果選了空值 (未綁定舊機台選項)，就抓出沒有 line_id 的孤兒機台
                 targetMachines = allMachines.filter(m => !m.line_id);
                 if (targetMachines.length === 0) {
                     machineList.innerHTML = '<li><span style="color: #a0aec0;">目前沒有未綁定的舊機台，請在上方選擇線別</span></li>';
                     return;
                 }
             } else {
-                // 正常抓取該線別的機台
                 targetMachines = allMachines.filter(m => m.line_id === lineId);
                 if (targetMachines.length === 0) {
                     machineList.innerHTML = '<li><span style="color: #a0aec0;">此線別尚無機台，請在上方新增</span></li>';
@@ -424,15 +473,9 @@
             const { data } = await db.from('machines').select('*, lines(name)').order('created_at', { ascending: true });
             allMachines = data || []; 
             
-            const statSelect = document.getElementById('statMachine');
-            statSelect.innerHTML = '<option value="">全部機台</option>';
-            
-            allMachines.forEach(m => {
-                statSelect.innerHTML += `<option value="${m.id}">${m.name}</option>`;
-            });
-            
             renderSettingMachineList(); 
             updateRecordMachineDropdown(); 
+            onStatLineChange(); // 更新統計畫面的機台選單
         }
 
         async function editMachine(id, oldName) { 
@@ -465,6 +508,23 @@
             const filteredMachines = allMachines.filter(m => m.lines && m.lines.name === selectedLineName);
             filteredMachines.forEach(m => {
                 recordSelect.innerHTML += `<option value="${m.id}">${m.name}</option>`;
+            });
+        }
+
+        // ★ 統計區的線別與機台連動
+        function onStatLineChange() {
+            const statMachineSelect = document.getElementById('statMachine');
+            const selectedLineName = document.getElementById('statLine').value;
+            
+            statMachineSelect.innerHTML = '<option value="">全部機台</option>';
+            
+            let targetMachines = allMachines;
+            if (selectedLineName) {
+                targetMachines = allMachines.filter(m => m.lines && m.lines.name === selectedLineName);
+            }
+            
+            targetMachines.forEach(m => {
+                statMachineSelect.innerHTML += `<option value="${m.id}">${m.name}</option>`;
             });
         }
 
@@ -589,44 +649,161 @@
             await db.from('production_records').delete().eq('id', id); loadRecordsByDate(); window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        // ================= 統計與導出邏輯 =================
+        // ================= ★ 統計與導出邏輯 (本次大改版區塊) ★ =================
         function getMinutesDiff(start, end) {
             if (!start || !end) return 0; const [sH, sM] = start.split(':').map(Number); const [eH, eM] = end.split(':').map(Number); return (eH * 60 + eM) - (sH * 60 + sM);
         }
 
         async function queryStatistics() {
-            const startDate = document.getElementById('statStartDate').value; const endDate = document.getElementById('statEndDate').value; const machineId = document.getElementById('statMachine').value;
+            const startDate = document.getElementById('statStartDate').value; 
+            const endDate = document.getElementById('statEndDate').value; 
+            const lineName = document.getElementById('statLine').value; 
+            const machineId = document.getElementById('statMachine').value;
+            
             if (!startDate || !endDate) return alert('請選擇開始與結束日期！');
 
-            let query = db.from('production_records').select('*, machines(name), downtime_events(duration_minutes, downtime_reasons(name))').gte('record_date', startDate).lte('record_date', endDate);
+            let query = db.from('production_records')
+                          .select('*, machines(name), downtime_events(duration_minutes, downtime_reasons(name))')
+                          .gte('record_date', startDate)
+                          .lte('record_date', endDate)
+                          .order('record_date', { ascending: true }); // 按日期排序
+
+            // 若有選擇特定線別或機台，加入條件過濾
+            if (lineName) query = query.eq('line_name', lineName);
             if (machineId) query = query.eq('machine_id', machineId);
 
             const { data: records, error } = await query;
-            if (error || records.length === 0) { alert(error ? '查詢失敗！' : '沒有資料！'); document.getElementById('statOEE').innerText = '0.0%'; document.getElementById('statTotalDowntime').innerText = '0 分鐘'; if (downtimeChartInstance) downtimeChartInstance.destroy(); currentExportData = []; return; }
+            
+            // 處理查無資料的情況
+            if (error || records.length === 0) { 
+                alert(error ? '查詢失敗！' : '這段期間沒有符合條件的資料！'); 
+                document.getElementById('statOEE').innerText = '0.0%'; 
+                document.getElementById('statTotalDowntime').innerText = '0 分鐘'; 
+                document.getElementById('statSummaryBody').innerHTML = '<tr><td colspan="4" style="text-align:center;">無資料</td></tr>';
+                document.getElementById('statDetailBody').innerHTML = '<tr><td colspan="7" style="text-align:center;">無資料</td></tr>';
+                if (downtimeChartInstance) downtimeChartInstance.destroy(); 
+                currentExportData = []; 
+                return; 
+            }
 
-            let totalActualAvailTime = 0; let grandTotalDowntime = 0; const reasonDowntimeMap = {}; currentExportData = [];
+            let totalActualAvailTime = 0; 
+            let grandTotalDowntime = 0; 
+            const reasonDowntimeMap = {}; 
+            currentExportData = [];
+            let detailHTML = '';
 
+            // 1. 整理每一筆明細與累加數據
             records.forEach(record => {
                 const plannedMin = getMinutesDiff(record.start_time, record.end_time);
-                let earlyEndMin = record.early_end_time ? getMinutesDiff(record.early_end_time, record.end_time) : 0; if (earlyEndMin < 0) earlyEndMin = 0;
-                const actualAvailMin = plannedMin - earlyEndMin - 60; totalActualAvailTime += actualAvailMin;
+                let earlyEndMin = record.early_end_time ? getMinutesDiff(record.early_end_time, record.end_time) : 0; 
+                if (earlyEndMin < 0) earlyEndMin = 0;
+                
+                // 計算可用時間 (預設扣午休60分)
+                const actualAvailMin = plannedMin - earlyEndMin - 60; 
+                totalActualAvailTime += actualAvailMin;
 
                 let recordDowntime = 0;
+                let recordReasonMap = {}; // 單日單機台的停機項目分類
+                
                 if (record.downtime_events) {
                     record.downtime_events.forEach(event => {
-                        const duration = event.duration_minutes; recordDowntime += duration; grandTotalDowntime += duration;
-                        reasonDowntimeMap[event.downtime_reasons.name] = (reasonDowntimeMap[event.downtime_reasons.name] || 0) + duration;
+                        const duration = event.duration_minutes; 
+                        const rName = event.downtime_reasons.name;
+                        recordDowntime += duration; 
+                        grandTotalDowntime += duration;
+                        
+                        // 加總給統整用的
+                        reasonDowntimeMap[rName] = (reasonDowntimeMap[rName] || 0) + duration;
+                        // 加總給明細用的
+                        recordReasonMap[rName] = (recordReasonMap[rName] || 0) + duration;
                     });
                 }
+                
                 let recordOEE = actualAvailMin > 0 ? ((actualAvailMin - recordDowntime) / actualAvailMin) * 100 : 0;
-                currentExportData.push({ "日期": record.record_date, "線別": record.line_name, "機台": record.machines.name, "開線時間": record.start_time, "結束時間": record.end_time, "提早結束": record.early_end_time || '-', "實際可用時間(分)": actualAvailMin, "停機時間(分)": recordDowntime, "稼動率(%)": recordOEE.toFixed(2) + '%' });
+                
+                // 轉換明細字串 (給 EXCEL 跟 HTML 表格)
+                let downtimeStrForExcel = Object.entries(recordReasonMap).map(([r, t]) => `${r}: ${t}分`).join('\n');
+                let downtimeStrForHTML = Object.entries(recordReasonMap).map(([r, t]) => `${r}: <span style="color:#e53e3e;font-weight:bold;">${t}分</span>`).join('<br>');
+                if (!downtimeStrForExcel) downtimeStrForExcel = '無';
+                if (!downtimeStrForHTML) downtimeStrForHTML = '-';
+
+                // 塞入 EXCEL 陣列
+                currentExportData.push({ 
+                    "日期": record.record_date, 
+                    "線別": record.line_name, 
+                    "機台": record.machines.name, 
+                    "開線時間": record.start_time, 
+                    "結束時間": record.end_time, 
+                    "提早結束": record.early_end_time || '-', 
+                    "實際可用時間(分)": actualAvailMin, 
+                    "停機明細": downtimeStrForExcel,
+                    "總停機(分)": recordDowntime, 
+                    "稼動率(%)": recordOEE.toFixed(2) + '%' 
+                });
+                
+                // 產生 HTML 明細列
+                detailHTML += `
+                    <tr>
+                        <td>${record.record_date}</td>
+                        <td>${record.line_name}</td>
+                        <td>${record.machines.name}</td>
+                        <td>${actualAvailMin} 分鐘</td>
+                        <td style="text-align:left; line-height:1.5;">${downtimeStrForHTML}</td>
+                        <td style="color:#e53e3e; font-weight:bold;">${recordDowntime} 分鐘</td>
+                        <td>${recordOEE.toFixed(2)}%</td>
+                    </tr>
+                `;
             });
 
-            let totalOEE = totalActualAvailTime > 0 ? ((totalActualAvailTime - grandTotalDowntime) / totalActualAvailTime) * 100 : 0;
-            document.getElementById('statOEE').innerText = totalOEE.toFixed(1) + '%'; document.getElementById('statTotalDowntime').innerText = grandTotalDowntime + ' 分鐘';
+            // 輸出明細表
+            document.getElementById('statDetailBody').innerHTML = detailHTML;
 
-            const ctx = document.getElementById('downtimeChart').getContext('2d'); if (downtimeChartInstance) downtimeChartInstance.destroy();
-            downtimeChartInstance = new Chart(ctx, { type: 'pie', data: { labels: Object.keys(reasonDowntimeMap), datasets: [{ data: Object.values(reasonDowntimeMap), backgroundColor: Object.keys(reasonDowntimeMap).map(() => `hsl(${Math.random() * 360}, 70%, 60%)`) }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' }, title: { display: true, text: '各停機項目時間佔比' } } } });
+            // 2. 輸出統整表與儀表板卡片
+            let totalOEE = totalActualAvailTime > 0 ? ((totalActualAvailTime - grandTotalDowntime) / totalActualAvailTime) * 100 : 0;
+            document.getElementById('statOEE').innerText = totalOEE.toFixed(1) + '%'; 
+            document.getElementById('statTotalDowntime').innerText = grandTotalDowntime + ' 分鐘';
+
+            let summaryDowntimeStr = Object.entries(reasonDowntimeMap).map(([r, t]) => `${r}: <span style="color:#e53e3e;font-weight:bold;">${t}分</span>`).join('<br>');
+            if (!summaryDowntimeStr) summaryDowntimeStr = '無停機紀錄';
+
+            document.getElementById('statSummaryBody').innerHTML = `
+                <tr>
+                    <td>${totalActualAvailTime} 分鐘</td>
+                    <td style="text-align:left; line-height:1.5;">${summaryDowntimeStr}</td>
+                    <td style="color:#e53e3e; font-weight:bold; font-size:1.1rem;">${grandTotalDowntime} 分鐘</td>
+                    <td style="font-size:1.2rem; font-weight:bold; color:#3182ce;">${totalOEE.toFixed(2)}%</td>
+                </tr>
+            `;
+
+            // 3. 繪製附帶百分比的圓餅圖
+            const ctx = document.getElementById('downtimeChart').getContext('2d'); 
+            if (downtimeChartInstance) downtimeChartInstance.destroy();
+            
+            // 將 labels 加上計算好的 % 數
+            const pieLabels = Object.keys(reasonDowntimeMap).map(k => {
+                let pct = ((reasonDowntimeMap[k] / grandTotalDowntime) * 100).toFixed(1);
+                return `${k} (${pct}%)`;
+            });
+            const pieData = Object.values(reasonDowntimeMap);
+            
+            downtimeChartInstance = new Chart(ctx, { 
+                type: 'pie', 
+                data: { 
+                    labels: pieLabels, 
+                    datasets: [{ 
+                        data: pieData, 
+                        backgroundColor: Object.keys(reasonDowntimeMap).map(() => `hsl(${Math.random() * 360}, 70%, 60%)`) 
+                    }] 
+                }, 
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false, 
+                    plugins: { 
+                        legend: { position: 'right' }, 
+                        title: { display: true, text: '各停機項目時間總佔比', font: { size: 16 } } 
+                    } 
+                } 
+            });
         }
 
         function exportToExcel() { if (currentExportData.length === 0) return alert('請先查詢資料！'); const ws = XLSX.utils.json_to_sheet(currentExportData); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "OEE紀錄"); XLSX.writeFile(wb, `SMT_OEE統計表_${new Date().toISOString().slice(0, 10)}.xlsx`); }
