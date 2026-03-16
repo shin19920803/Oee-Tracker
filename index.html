@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SMT 機台稼動率統計系統</title>
-    <link rel="stylesheet" href="style.css?v=8">
+    <link rel="stylesheet" href="style.css?v=9">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -32,29 +32,18 @@
         <div class="content-wrapper">
             
             <div id="daily-record" class="page-section" style="display: none;">
-                
                 <div class="section" style="border-top: 4px solid #4a5568;">
                     <h2>1. 生產基本資料 (今日共用)</h2>
                     <div class="form-grid">
-                        <div>
-                            <label>日期</label>
-                            <input type="date" id="recordDate" onchange="loadRecordsByDate()">
-                        </div>
-                        <div>
-                            <label>線別</label>
-                            <select id="recordLine" onchange="onLineSelectionChange()"><option value="">請先至基礎設定新增</option></select>
-                        </div>
+                        <div><label>日期</label><input type="date" id="recordDate" onchange="loadRecordsByDate()"></div>
+                        <div><label>線別</label><select id="recordLine" onchange="onLineSelectionChange()"><option value="">請先至基礎設定新增</option></select></div>
                         <div>
                             <label>開線時間 (24H)</label>
-                            <div class="time-picker">
-                                <select id="startHour"></select><span>:</span><select id="startMinute"></select>
-                            </div>
+                            <div class="time-picker"><select id="startHour"></select><span>:</span><select id="startMinute"></select></div>
                         </div>
                         <div>
                             <label>結束時間 (24H)</label>
-                            <div class="time-picker">
-                                <select id="endHour"></select><span>:</span><select id="endMinute"></select>
-                            </div>
+                            <div class="time-picker"><select id="endHour"></select><span>:</span><select id="endMinute"></select></div>
                         </div>
                     </div>
                 </div>
@@ -62,15 +51,10 @@
                 <div class="section" style="margin-top: 20px; border-top: 4px solid #3182ce;">
                     <h2>2. 新增機台與停機紀錄</h2>
                     <div class="form-grid">
-                        <div>
-                            <label>機台名稱</label>
-                            <select id="recordMachine"><option value="">請先選擇上方線別</option></select>
-                        </div>
+                        <div><label>機台名稱</label><select id="recordMachine"><option value="">請先選擇上方線別</option></select></div>
                         <div>
                             <label>提早結束時間 (選填)</label>
-                            <div class="time-picker">
-                                <select id="earlyEndHour"></select><span>:</span><select id="earlyEndMinute"></select>
-                            </div>
+                            <div class="time-picker"><select id="earlyEndHour"></select><span>:</span><select id="earlyEndMinute"></select></div>
                         </div>
                     </div>
 
@@ -99,17 +83,10 @@
                     <table class="data-table">
                         <thead>
                             <tr>
-                                <th>線別</th>
-                                <th>機台</th>
-                                <th>開線~結束</th>
-                                <th>提早結束</th>
-                                <th>停機時數</th>
-                                <th>操作 (編輯/刪除)</th>
+                                <th>線別</th><th>機台</th><th>開線~結束</th><th>提早結束</th><th>停機時數</th><th>操作 (編輯/刪除)</th>
                             </tr>
                         </thead>
-                        <tbody id="dailyHistoryTable">
-                            <tr><td colspan="6" style="text-align:center;">請選擇日期以載入紀錄...</td></tr>
-                        </tbody>
+                        <tbody id="dailyHistoryTable"><tr><td colspan="6" style="text-align:center;">請選擇日期以載入紀錄...</td></tr></tbody>
                     </table>
                 </div>
             </div>
@@ -138,31 +115,43 @@
             </div>
 
             <div id="basic-settings" class="page-section">
-                <div class="container" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));">
-                    <div class="section">
-                        <h2>線別清單</h2>
-                        <div class="input-group">
-                            <input type="text" id="lineName" placeholder="例: SMT-1線">
-                            <button onclick="addLine()">新增</button>
-                        </div>
-                        <ul id="lineList"></ul>
-                    </div>
+                <div class="container" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                     
                     <div class="section">
-                        <h2>機台清單</h2>
-                        <div class="input-group">
-                            <select id="machineLineSelect" style="flex: 1;"><option value="">綁定線別</option></select>
-                            <input type="text" id="machineName" placeholder="例: NXT-III" style="flex: 2;">
-                            <button onclick="addMachine()">新增</button>
+                        <h2><i class="fas fa-network-wired"></i> 線別與機台管理</h2>
+                        
+                        <div style="background-color: #f7fafc; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #e2e8f0;">
+                            <label style="font-weight: bold; margin-bottom: 10px; display: block; color: #2c3e50;">1. 選擇或新增線別</label>
+                            <div class="input-group">
+                                <select id="settingLineSelect" style="flex: 2;" onchange="onSettingLineChange()">
+                                    <option value="">請選擇線別...</option>
+                                </select>
+                                <button class="edit-btn" style="background-color: #ecc94b; color: #744210;" onclick="editSelectedLine()">修改名稱</button>
+                                <button class="delete-btn" onclick="deleteSelectedLine()">刪除此線</button>
+                            </div>
+                            <div class="input-group" style="margin-top: 10px; margin-bottom: 0;">
+                                <input type="text" id="newLineName" placeholder="或輸入新線別名稱">
+                                <button onclick="addNewLine()" style="background-color: #38a169;">新增線別</button>
+                            </div>
                         </div>
-                        <ul id="machineList"></ul>
+
+                        <div style="background-color: #f7fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0;">
+                            <label style="font-weight: bold; margin-bottom: 10px; display: block; color: #2c3e50;">
+                                2. 管理 [<span id="currentSettingLineDisplay" style="color:#3182ce;">未選擇</span>] 的專屬機台
+                            </label>
+                            <div class="input-group">
+                                <input type="text" id="newMachineName" placeholder="輸入要綁定在此線的機台名稱">
+                                <button onclick="addNewMachineToLine()">新增機台</button>
+                            </div>
+                            <ul id="settingMachineList" style="margin-bottom: 0;"></ul>
+                        </div>
                     </div>
 
                     <div class="section">
-                        <h2>停機項目清單</h2>
+                        <h2><i class="fas fa-exclamation-triangle"></i> 停機項目清單</h2>
                         <div class="input-group">
                             <input type="text" id="reasonName" placeholder="例: 首件、異常排除">
-                            <button onclick="addReason()">新增</button>
+                            <button onclick="addReason()">新增項目</button>
                         </div>
                         <ul id="reasonList"></ul>
                     </div>
