@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SMT 機台稼動率統計系統</title>
-    <link rel="stylesheet" href="style.css?v=2">
+    <link rel="stylesheet" href="style.css?v=4">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
@@ -30,13 +30,78 @@
         <div class="content-wrapper">
             
             <div id="daily-record" class="page-section" style="display: none;">
-                <h3>每日報工介面開發中...</h3>
-                <p>接下來我們將在這裡製作開線、停機時間紀錄表單。</p>
+                <div class="section">
+                    <h2>生產基本資料</h2>
+                    <div class="form-grid">
+                        <div>
+                            <label>日期</label>
+                            <input type="date" id="recordDate">
+                        </div>
+                        <div>
+                            <label>線別</label>
+                            <input type="text" id="recordLine" placeholder="例: SMT-1線">
+                        </div>
+                        <div>
+                            <label>機台</label>
+                            <select id="recordMachine">
+                                <option value="">請先至基礎設定新增機台</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label>開線時間</label>
+                            <input type="time" id="startTime">
+                        </div>
+                        <div>
+                            <label>結束時間</label>
+                            <input type="time" id="endTime">
+                        </div>
+                        <div>
+                            <label>提早結束時間 (選填)</label>
+                            <input type="time" id="earlyEndTime">
+                        </div>
+                        <div class="checkbox-container">
+                            <input type="checkbox" id="isRollingBreak">
+                            <label for="isRollingBreak">是否輪休 (打勾代表中午不休息)</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section" style="margin-top: 20px;">
+                    <h2>停機紀錄輸入</h2>
+                    <div class="input-group">
+                        <select id="downtimeReasonSelect" style="flex: 2; padding: 10px; border: 1px solid #cbd5e0; border-radius: 4px;">
+                            <option value="">請選擇停機項目</option>
+                        </select>
+                        <input type="number" id="downtimeDuration" placeholder="時間(分鐘，限5的倍數)" step="5" min="5" style="flex: 1;">
+                        <button onclick="addDowntimeToList()">新增停機</button>
+                    </div>
+                    
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>停機項目</th>
+                                <th>時間 (分鐘)</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="downtimeTableBody">
+                            </tbody>
+                    </table>
+                    <div class="total-summary">
+                        目前總停機時間： <span id="totalDowntimeDisplay">0</span> 分鐘
+                    </div>
+                </div>
+
+                <div style="text-align: center; margin-top: 20px;">
+                    <button class="save-btn" onclick="submitDailyRecord()"><i class="fas fa-save"></i> 儲存今日報工</button>
+                </div>
             </div>
 
             <div id="statistics" class="page-section" style="display: none;">
-                <h3>統計與導出介面開發中...</h3>
-                <p>這裡未來會放置圓餅圖與 EXCEL 匯出按鈕。</p>
+                <div class="section">
+                    <h3>統計與導出介面開發中...</h3>
+                    <p>這裡未來會放置圓餅圖與 EXCEL 匯出按鈕。</p>
+                </div>
             </div>
 
             <div id="basic-settings" class="page-section">
