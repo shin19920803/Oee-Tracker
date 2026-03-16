@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SMT 機台稼動率統計系統</title>
-    <link rel="stylesheet" href="style.css?v=6">
+    <link rel="stylesheet" href="style.css?v=7">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -44,8 +44,18 @@
                             <label>線別</label>
                             <select id="recordLine"><option value="">請先至基礎設定新增</option></select>
                         </div>
-                        <div><label>開線時間</label><input type="time" id="startTime"></div>
-                        <div><label>結束時間</label><input type="time" id="endTime"></div>
+                        <div>
+                            <label>開線時間 (24H)</label>
+                            <div class="time-picker">
+                                <select id="startHour"></select><span>:</span><select id="startMinute"></select>
+                            </div>
+                        </div>
+                        <div>
+                            <label>結束時間 (24H)</label>
+                            <div class="time-picker">
+                                <select id="endHour"></select><span>:</span><select id="endMinute"></select>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -56,14 +66,20 @@
                             <label>機台名稱</label>
                             <select id="recordMachine"><option value="">請先至基礎設定新增</option></select>
                         </div>
-                        <div><label>提早結束時間 (選填)</label><input type="time" id="earlyEndTime"></div>
+                        <div>
+                            <label>提早結束時間 (選填)</label>
+                            <div class="time-picker">
+                                <select id="earlyEndHour"></select><span>:</span><select id="earlyEndMinute"></select>
+                            </div>
+                        </div>
                     </div>
 
                     <div style="background-color: #f7fafc; padding: 15px; border-radius: 8px; margin-top: 15px;">
                         <h3 style="margin-top: 0; font-size: 1rem;">機台停機輸入</h3>
                         <div class="input-group">
                             <select id="downtimeReasonSelect" style="flex: 2;"><option value="">請選擇停機項目</option></select>
-                            <input type="number" id="downtimeDuration" placeholder="時間(分鐘，限5的倍數)" step="5" min="5" style="flex: 1;">
+                            <select id="downtimeHour" style="flex: 1;"></select>
+                            <select id="downtimeMinute" style="flex: 1;"></select>
                             <button onclick="addDowntimeToList()">加入停機</button>
                         </div>
                         <table class="data-table">
@@ -123,7 +139,6 @@
 
             <div id="basic-settings" class="page-section">
                 <div class="container" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));">
-                    
                     <div class="section">
                         <h2>線別清單</h2>
                         <div class="input-group">
@@ -132,7 +147,6 @@
                         </div>
                         <ul id="lineList"></ul>
                     </div>
-
                     <div class="section">
                         <h2>機台清單</h2>
                         <div class="input-group">
@@ -141,7 +155,6 @@
                         </div>
                         <ul id="machineList"></ul>
                     </div>
-
                     <div class="section">
                         <h2>停機項目清單</h2>
                         <div class="input-group">
@@ -150,7 +163,6 @@
                         </div>
                         <ul id="reasonList"></ul>
                     </div>
-
                 </div>
             </div>
 
