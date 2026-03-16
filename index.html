@@ -97,9 +97,14 @@
             
             <div id="daily-record" class="page-section" style="display: none;">
                 <div class="section" style="border-top: 4px solid #4a5568;">
-                    <h2>1. 生產基本資料 (今日共用)</h2>
+                    <h2>1. 生產基本資料</h2>
+                    
+                    <div style="margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid #e2e8f0;">
+                        <label style="font-weight: bold; font-size: 14px; color: #4a5568; display: block; margin-bottom: 5px;">日期</label>
+                        <input type="date" id="recordDate" onchange="loadRecordsByDate()" style="max-width: 250px;">
+                    </div>
+
                     <div class="form-grid">
-                        <div><label>日期</label><input type="date" id="recordDate" onchange="loadRecordsByDate()"></div>
                         <div><label>線別</label><select id="recordLine" onchange="onLineSelectionChange()"><option value="">請先至基礎設定新增</option></select></div>
                         <div>
                             <label>開線時間 (24H)</label>
@@ -305,7 +310,7 @@
         let currentExportData = [];
         let allMachines = []; 
         let allLines = [];
-        let currentQueriedRecords = []; // ★ 供區域切換機台使用
+        let currentQueriedRecords = [];
 
         document.addEventListener('DOMContentLoaded', () => {
             populateTimeSelects();
@@ -323,7 +328,6 @@
             loadRecordsByDate();
         });
 
-        // ================= 時間選單工具 =================
         function populateTimeSelects() {
             const hours24 = Array.from({length: 24}, (_, i) => String(i).padStart(2, '0'));
             const minutes60 = Array.from({length: 60}, (_, i) => String(i).padStart(2, '0'));
@@ -355,7 +359,6 @@
             const [h, m] = timeString.split(':'); document.getElementById(hourId).value = h; document.getElementById(minuteId).value = m;
         }
 
-        // ================= 線別與機台連動 =================
         async function fetchLines() {
             const { data } = await db.from('lines').select('*').order('created_at', { ascending: true });
             allLines = data || [];
@@ -417,7 +420,6 @@
             targetMachines.forEach(m => { statMachineSelect.innerHTML += `<option value="${m.id}">${m.name}</option>`; });
         }
 
-        // ================= 停機項目相關 =================
         async function fetchReasons() {
             const { data } = await db.from('downtime_reasons').select('id, name, is_planned').order('created_at', { ascending: true });
             const plannedList = document.getElementById('plannedReasonList'); const unplannedList = document.getElementById('unplannedReasonList'); const select = document.getElementById('downtimeReasonSelect');
@@ -444,7 +446,6 @@
         async function editReason(id, oldName) { const newName = prompt('新停機項目名稱：', oldName); if (newName) { await db.from('downtime_reasons').update({ name: newName.trim() }).eq('id', id); fetchReasons(); } }
         async function deleteReason(id) { if (confirm('確定刪除？')) { await db.from('downtime_reasons').delete().eq('id', id); fetchReasons(); } }
 
-        // ================= 每日報工儲存與紀錄 =================
         function addDowntimeToList() {
             const select = document.getElementById('downtimeReasonSelect');
             const reasonId = select.value; 
@@ -529,7 +530,6 @@
             renderDowntimeTable(); await db.from('production_records').delete().eq('id', id); loadRecordsByDate(); window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        // ================= ★ OEE 統計邏輯 (修復顯示 BUG 並加入機台切換) ★ =================
         function getMinutesDiff(start, end) {
             if (!start || !end) return 0; const [sH, sM] = start.split(':').map(Number); const [eH, eM] = end.split(':').map(Number); return (eH * 60 + eM) - (sH * 60 + sM);
         }
@@ -544,7 +544,7 @@
             if (lineName) query = query.eq('line_name', lineName); if (machineId) query = query.eq('machine_id', machineId);
 
             const { data: records, error } = await query;
-            currentQueriedRecords = records || []; // 存入全域變數供統整下拉使用
+            currentQueriedRecords = records || []; 
 
             if (error || !records || records.length === 0) { 
                 alert(error ? '查詢失敗！' : '這段期間沒有符合條件的資料！'); 
@@ -556,7 +556,6 @@
                 return; 
             }
 
-            // 1. 建立「區間統整」用的機台切換下拉選單
             const summarySelect = document.getElementById('summaryMachineFilter');
             summarySelect.innerHTML = '<option value="">全部機台加總</option>';
             const uniqueMachinesInQuery = {};
@@ -565,7 +564,6 @@
                 summarySelect.innerHTML += `<option value="${id}">${name}</option>`;
             }
 
-            // 2. 建立下方「每日機台明細」與「Excel導出資料」
             currentExportData = []; let detailHTML = '';
             records.forEach(record => {
                 const plannedMin = getMinutesDiff(record.start_time, record.end_time);
@@ -604,7 +602,6 @@
                         "有輪休": record.is_rolling_break ? '是' : '否', "計畫性停機扣除(分)": recordPlannedDowntime, "實際可用時間(分)": actualAvailMin, 
                         "停機項目": "無", "屬性": "-", "該項停機(分)": 0, "非計畫總停機(損失分)": 0, "稼動率(%)": recordOEE.toFixed(2) + '%' 
                     });
-                    // ★ 修復 BUG：拔除多餘的 <td>0</td>，確保為 8 個欄位
                     detailHTML += `<tr><td>${record.record_date}</td><td>${record.line_name}</td><td>${record.machines.name}</td><td>${actualAvailMin}</td><td>無</td><td>-</td><td style="color:#e53e3e; font-weight:bold;">0</td><td>${recordOEE.toFixed(2)}%</td></tr>`;
                 } else {
                     rKeys.forEach((rName, idx) => {
@@ -643,18 +640,15 @@
 
             document.getElementById('statDetailBody').innerHTML = detailHTML;
 
-            // 3. 計算上方統整與圖表
             renderSummaryAndChart();
         }
 
-        // 獨立出統整函數，以便下拉選單切換時不需重新發 API
         function renderSummaryAndChart() {
             if (!currentQueriedRecords || currentQueriedRecords.length === 0) return;
 
             const selectedMachineId = document.getElementById('summaryMachineFilter').value;
             let filteredRecords = currentQueriedRecords;
 
-            // 若有選擇特定機台，過濾資料
             if (selectedMachineId) {
                 filteredRecords = currentQueriedRecords.filter(r => r.machine_id === selectedMachineId);
             }
