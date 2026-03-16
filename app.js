@@ -3,74 +3,100 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let currentDowntimeEvents = [];
-let loadedDailyRecords = []; // 存儲畫面下方顯示的歷史紀錄
+let loadedDailyRecords = [];
 let downtimeChartInstance = null;
 let currentExportData = [];
 
 document.addEventListener('DOMContentLoaded', () => {
+    // 1. 初始化下拉選單選項
+    populateTimeSelects();
+
     fetchLines();
     fetchMachines();
     fetchReasons();
     
-    // 設定預設日期，並立刻讀取當日紀錄
+    // 2. 設定預設日期
     const today = new Date();
     document.getElementById('recordDate').valueAsDate = today;
     document.getElementById('statStartDate').valueAsDate = today;
     document.getElementById('statEndDate').valueAsDate = today;
     
-    loadRecordsByDate(); // 自動載入今天的歷史紀錄
+    // 3. 預設開線時間 08:30
+    document.getElementById('startHour').value = '08';
+    document.getElementById('startMinute').value = '30';
+    
+    loadRecordsByDate();
 });
 
-// ================= 新增：線別相關功能 =================
-async function fetchLines() {
-    const { data, error } = await db.from('lines').select('*').order('created_at', { ascending: true });
-    if (error) return console.error('讀取線別失敗:', error);
+// ================= 新增：時間下拉選單產生器 =================
+function populateTimeSelects() {
+    // 產生 00~23 小時
+    const hours24 = Array.from({length: 24}, (_, i) => String(i).padStart(2, '0'));
+    // 產生 00~59 分鐘
+    const minutes60 = Array.from({length: 60}, (_, i) => String(i).padStart(2, '0'));
     
+    const hourOptions = hours24.map(h => `<option value="${h}">${h}</option>`).join('');
+    const minuteOptions = minutes60.map(m => `<option value="${m}">${m}</option>`).join('');
+    const emptyOption = `<option value="">--</option>`;
+
+    // 報工開線與結束
+    document.getElementById('startHour').innerHTML = hourOptions;
+    document.getElementById('startMinute').innerHTML = minuteOptions;
+    document.getElementById('endHour').innerHTML = hourOptions;
+    document.getElementById('endMinute').innerHTML = minuteOptions;
+    
+    // 提早結束 (允許空白)
+    document.getElementById('earlyEndHour').innerHTML = emptyOption + hourOptions;
+    document.getElementById('earlyEndMinute').innerHTML = emptyOption + minuteOptions;
+
+    // 停機時間 (小時: 0~24)
+    let dtHours = `<option value="0">0 小時</option>`;
+    for(let i=1; i<=24; i++) dtHours += `<option value="${i}">${i} 小時</option>`;
+    document.getElementById('downtimeHour').innerHTML = dtHours;
+
+    // 停機時間 (分鐘: 0, 5, 10... 60)
+    let dtMinutes = `<option value="0">0 分鐘</option>`;
+    for(let i=5; i<=60; i+=5) dtMinutes += `<option value="${i}">${i} 分鐘</option>`;
+    document.getElementById('downtimeMinute').innerHTML = dtMinutes;
+}
+
+// 取得自製選單的時間字串 (回傳 HH:MM 或 null)
+function getSelectedTime(hourId, minuteId) {
+    const h = document.getElementById(hourId).value;
+    const m = document.getElementById(minuteId).value;
+    if (h && m) return `${h}:${m}`;
+    return null;
+}
+
+// 將資料庫的 HH:MM 設定回自製選單
+function setSelectedTime(hourId, minuteId, timeString) {
+    if (!timeString) {
+        document.getElementById(hourId).value = '';
+        document.getElementById(minuteId).value = '';
+        return;
+    }
+    const [h, m] = timeString.split(':');
+    document.getElementById(hourId).value = h;
+    document.getElementById(minuteId).value = m;
+}
+
+// ================= 線別相關功能 =================
+async function fetchLines() {
+    const { data } = await db.from('lines').select('*').order('created_at', { ascending: true });
     const list = document.getElementById('lineList');
     const recordSelect = document.getElementById('recordLine');
-    list.innerHTML = '';
-    recordSelect.innerHTML = '<option value="">請選擇線別</option>';
-
+    list.innerHTML = ''; recordSelect.innerHTML = '<option value="">請選擇線別</option>';
+    if(!data) return;
     data.forEach(line => {
-        list.innerHTML += `
-            <li>
-                ${line.name} 
-                <div class="btn-group">
-                    <button class="edit-btn" onclick="editLine('${line.id}', '${line.name}')">編輯</button>
-                    <button class="delete-btn" onclick="deleteLine('${line.id}')">刪除</button>
-                </div>
-            </li>
-        `;
+        list.innerHTML += `<li>${line.name} <div class="btn-group"><button class="edit-btn" onclick="editLine('${line.id}', '${line.name}')">編輯</button><button class="delete-btn" onclick="deleteLine('${line.id}')">刪除</button></div></li>`;
         recordSelect.innerHTML += `<option value="${line.name}">${line.name}</option>`;
     });
-
-    // 讀取記憶的線別
     const savedLine = localStorage.getItem('smtSavedLine');
     if (savedLine) recordSelect.value = savedLine;
 }
-
-async function addLine() {
-    const input = document.getElementById('lineName');
-    const name = input.value.trim();
-    if (!name) return alert('請輸入線別名稱');
-    const { error } = await db.from('lines').insert([{ name: name }]);
-    if (error) alert('新增失敗！'); else { input.value = ''; fetchLines(); }
-}
-
-async function editLine(id, oldName) {
-    const newName = prompt('請輸入新的線別名稱：', oldName);
-    if (newName && newName.trim() !== oldName) {
-        await db.from('lines').update({ name: newName.trim() }).eq('id', id);
-        fetchLines();
-    }
-}
-
-async function deleteLine(id) {
-    if (confirm('確定要刪除線別嗎？')) {
-        await db.from('lines').delete().eq('id', id);
-        fetchLines();
-    }
-}
+async function addLine() { const name = document.getElementById('lineName').value.trim(); if (name) { await db.from('lines').insert([{ name }]); document.getElementById('lineName').value=''; fetchLines(); } }
+async function editLine(id, oldName) { const newName = prompt('新線別名稱：', oldName); if (newName && newName.trim() !== oldName) { await db.from('lines').update({ name: newName.trim() }).eq('id', id); fetchLines(); } }
+async function deleteLine(id) { if (confirm('確定刪除？')) { await db.from('lines').delete().eq('id', id); fetchLines(); } }
 
 // ================= 機台相關功能 =================
 async function fetchMachines() {
@@ -78,9 +104,7 @@ async function fetchMachines() {
     const list = document.getElementById('machineList');
     const recordSelect = document.getElementById('recordMachine');
     const statSelect = document.getElementById('statMachine');
-    list.innerHTML = '';
-    recordSelect.innerHTML = '<option value="">請選擇機台</option>';
-    statSelect.innerHTML = '<option value="">全部機台</option>';
+    list.innerHTML = ''; recordSelect.innerHTML = '<option value="">請選擇機台</option>'; statSelect.innerHTML = '<option value="">全部機台</option>';
     if(!data) return;
     data.forEach(m => {
         list.innerHTML += `<li>${m.name} <div class="btn-group"><button class="edit-btn" onclick="editMachine('${m.id}', '${m.name}')">編輯</button><button class="delete-btn" onclick="deleteMachine('${m.id}')">刪除</button></div></li>`;
@@ -108,21 +132,24 @@ async function addReason() { const name = document.getElementById('reasonName').
 async function editReason(id, oldName) { const newName = prompt('新停機項目名稱：', oldName); if (newName) { await db.from('downtime_reasons').update({ name: newName.trim() }).eq('id', id); fetchReasons(); } }
 async function deleteReason(id) { if (confirm('確定刪除？')) { await db.from('downtime_reasons').delete().eq('id', id); fetchReasons(); } }
 
-
 // ================= 每日報工表單邏輯 =================
-
-// 加入暫存停機
 function addDowntimeToList() {
     const select = document.getElementById('downtimeReasonSelect');
     const reasonId = select.value;
     const reasonName = select.options[select.selectedIndex].text;
-    const duration = parseInt(document.getElementById('downtimeDuration').value);
+    
+    // 計算總分鐘數
+    const hours = parseInt(document.getElementById('downtimeHour').value);
+    const minutes = parseInt(document.getElementById('downtimeMinute').value);
+    const totalDuration = (hours * 60) + minutes;
 
     if (!reasonId) return alert('請選擇停機項目！');
-    if (!duration || duration <= 0 || duration % 5 !== 0) return alert('時間必須為大於0的5的倍數！');
+    if (totalDuration <= 0) return alert('停機時間必須大於 0 分鐘！');
 
-    currentDowntimeEvents.push({ reasonId, reasonName, duration });
-    select.value = ''; document.getElementById('downtimeDuration').value = '';
+    currentDowntimeEvents.push({ reasonId, reasonName, duration: totalDuration });
+    select.value = ''; 
+    document.getElementById('downtimeHour').value = '0';
+    document.getElementById('downtimeMinute').value = '0';
     renderDowntimeTable();
 }
 
@@ -146,20 +173,20 @@ function renderDowntimeTable() {
 async function submitMachineRecord() {
     const date = document.getElementById('recordDate').value;
     const line = document.getElementById('recordLine').value;
-    const startTime = document.getElementById('startTime').value;
-    const endTime = document.getElementById('endTime').value;
+    
+    // 從自製下拉選單取得時間字串
+    const startTime = getSelectedTime('startHour', 'startMinute');
+    const endTime = getSelectedTime('endHour', 'endMinute');
+    const earlyEndTime = getSelectedTime('earlyEndHour', 'earlyEndMinute');
     
     const machineId = document.getElementById('recordMachine').value;
-    const earlyEndTime = document.getElementById('earlyEndTime').value || null;
 
     if (!date || !line || !startTime || !endTime || !machineId) {
         return alert('請完整填寫上方共用資料(日期/線別/開線/結束) 以及 要儲存的機台名稱！');
     }
 
-    // 記憶線別與時間，方便下一台機台直接使用
     localStorage.setItem('smtSavedLine', line);
 
-    // 寫入資料庫
     const { data: recordData, error: recordError } = await db.from('production_records').insert([{
         record_date: date,
         line_name: line,
@@ -167,7 +194,7 @@ async function submitMachineRecord() {
         start_time: startTime,
         end_time: endTime,
         early_end_time: earlyEndTime,
-        is_rolling_break: false // 預設拿掉輪休選項以簡化
+        is_rolling_break: false
     }]).select();
 
     if (recordError) return alert('主紀錄儲存失敗：' + recordError.message);
@@ -184,13 +211,13 @@ async function submitMachineRecord() {
 
     alert('機台紀錄儲存成功！你可以繼續輸入下一台機台。');
     
-    // 只清空「單一機台」區塊，保留上方共用時間！
+    // 清空單一機台區塊
     document.getElementById('recordMachine').value = '';
-    document.getElementById('earlyEndTime').value = '';
+    document.getElementById('earlyEndHour').value = '';
+    document.getElementById('earlyEndMinute').value = '';
     currentDowntimeEvents = [];
     renderDowntimeTable();
 
-    // 重新載入歷史紀錄
     loadRecordsByDate();
 }
 
@@ -239,28 +266,26 @@ async function loadRecordsByDate() {
     });
 }
 
-// 刪除整筆機台紀錄
 async function deleteDailyRecord(id) {
     if (!confirm('確定要刪除這筆機台紀錄嗎？相關停機明細也會一併刪除！')) return;
     await db.from('production_records').delete().eq('id', id);
     loadRecordsByDate();
 }
 
-// 載入編輯 (將資料放到上方表單，並刪除舊資料，讓使用者重新存檔)
 async function editDailyRecord(id) {
     const record = loadedDailyRecords.find(r => r.id === id);
     if (!record) return;
 
     if (!confirm('準備進行編輯。\n系統會將此紀錄載入到上方表單，並移除舊紀錄，請務必在修改後點擊「儲存此機台紀錄」！')) return;
 
-    // 將資料填回表單
     document.getElementById('recordLine').value = record.line_name;
     document.getElementById('recordMachine').value = record.machine_id;
-    document.getElementById('startTime').value = record.start_time;
-    document.getElementById('endTime').value = record.end_time;
-    document.getElementById('earlyEndTime').value = record.early_end_time || '';
+    
+    // 設定自製下拉選單的時間
+    setSelectedTime('startHour', 'startMinute', record.start_time);
+    setSelectedTime('endHour', 'endMinute', record.end_time);
+    setSelectedTime('earlyEndHour', 'earlyEndMinute', record.early_end_time);
 
-    // 將停機明細填回暫存區
     currentDowntimeEvents = [];
     if (record.downtime_events) {
         record.downtime_events.forEach(e => {
@@ -273,16 +298,12 @@ async function editDailyRecord(id) {
     }
     renderDowntimeTable();
 
-    // 刪除舊紀錄
     await db.from('production_records').delete().eq('id', id);
-    loadRecordsByDate(); // 更新下方表格
-
-    // 畫面捲動到最上方
+    loadRecordsByDate();
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-
-// ================= 統計與導出邏輯 (保留上一版的計算) =================
+// ================= 統計與導出邏輯 =================
 function getMinutesDiff(start, end) {
     if (!start || !end) return 0;
     const [sH, sM] = start.split(':').map(Number);
@@ -364,7 +385,6 @@ function exportToExcel() {
     XLSX.writeFile(wb, `SMT_OEE統計表_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
-// ================= 介面互動 =================
 function switchPage(pageId, title) {
     document.querySelectorAll('.page-section').forEach(s => s.style.display = 'none');
     document.getElementById(pageId).style.display = 'block';
