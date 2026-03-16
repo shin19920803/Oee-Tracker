@@ -180,7 +180,7 @@
                             <label style="font-weight: bold; margin-bottom: 10px; display: block; color: #2c3e50;">1. 選擇或新增線別</label>
                             <div class="input-group">
                                 <select id="settingLineSelect" style="flex: 2;" onchange="onSettingLineChange()">
-                                    <option value="">請選擇線別...</option>
+                                    <option value="">[檢視未綁定的舊機台]</option>
                                 </select>
                                 <button class="edit-btn" style="background-color: #ecc94b; color: #744210;" onclick="editSelectedLine()">修改名稱</button>
                                 <button class="delete-btn" onclick="deleteSelectedLine()">刪除此線</button>
@@ -193,7 +193,7 @@
 
                         <div style="background-color: #f7fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0;">
                             <label style="font-weight: bold; margin-bottom: 10px; display: block; color: #2c3e50;">
-                                2. 管理 [<span id="currentSettingLineDisplay" style="color:#3182ce;">未選擇</span>] 的專屬機台
+                                2. 管理 [<span id="currentSettingLineDisplay" style="color:#e53e3e; font-weight:bold;">未綁定舊機台</span>]
                             </label>
                             <div class="input-group">
                                 <input type="text" id="newMachineName" placeholder="輸入要綁定在此線的機台名稱">
@@ -297,7 +297,8 @@
             const currentSettingVal = settingLineSelect.value;
             
             recordSelect.innerHTML = '<option value="">請選擇線別</option>';
-            settingLineSelect.innerHTML = '<option value="">請選擇線別...</option>';
+            // ★ 改動：讓下拉選單永遠保留「檢視未綁定」的選項
+            settingLineSelect.innerHTML = '<option value="">[檢視未綁定的舊機台]</option>';
 
             allLines.forEach(line => {
                 recordSelect.innerHTML += `<option value="${line.name}">${line.name}</option>`;
@@ -313,6 +314,7 @@
             if (currentSettingVal && allLines.find(l => l.id === currentSettingVal)) {
                 settingLineSelect.value = currentSettingVal;
             } else if (allLines.length > 0) {
+                // 如果有線別，預設選第一個
                 settingLineSelect.value = allLines[0].id; 
             }
 
@@ -323,34 +325,43 @@
             const settingSelect = document.getElementById('settingLineSelect');
             const displaySpan = document.getElementById('currentSettingLineDisplay');
             
+            // ★ 改動：如果是空值，就顯示正在檢視舊機台
             if (!settingSelect.value) {
-                displaySpan.innerText = '未選擇';
-                document.getElementById('settingMachineList').innerHTML = '<li><span style="color: #a0aec0;">請先在上方選擇線別</span></li>';
-                return;
+                displaySpan.innerText = '未綁定舊機台';
+                displaySpan.style.color = '#e53e3e'; // 紅色警示
+            } else {
+                displaySpan.innerText = settingSelect.options[settingSelect.selectedIndex].text;
+                displaySpan.style.color = '#3182ce'; // 藍色正常
             }
-
-            const selectedLineName = settingSelect.options[settingSelect.selectedIndex].text;
-            displaySpan.innerText = selectedLineName;
             renderSettingMachineList();
         }
 
-        // 更新清單畫面 (包含編輯與刪除按鈕)
+        // ★ 改動：顯示機台清單的邏輯強化，支援顯示「未綁定機台」
         function renderSettingMachineList() {
             const settingSelect = document.getElementById('settingLineSelect');
             const machineList = document.getElementById('settingMachineList');
             machineList.innerHTML = '';
 
-            if (!settingSelect.value) return;
-
             const lineId = settingSelect.value;
-            const filteredMachines = allMachines.filter(m => m.line_id === lineId);
+            let targetMachines = [];
 
-            if (filteredMachines.length === 0) {
-                machineList.innerHTML = '<li><span style="color: #a0aec0;">此線別尚無機台，請在上方新增</span></li>';
-                return;
+            if (!lineId) {
+                // 如果選了空值 (未綁定舊機台選項)，就抓出沒有 line_id 的孤兒機台
+                targetMachines = allMachines.filter(m => !m.line_id);
+                if (targetMachines.length === 0) {
+                    machineList.innerHTML = '<li><span style="color: #a0aec0;">目前沒有未綁定的舊機台，請在上方選擇線別</span></li>';
+                    return;
+                }
+            } else {
+                // 正常抓取該線別的機台
+                targetMachines = allMachines.filter(m => m.line_id === lineId);
+                if (targetMachines.length === 0) {
+                    machineList.innerHTML = '<li><span style="color: #a0aec0;">此線別尚無機台，請在上方新增</span></li>';
+                    return;
+                }
             }
 
-            filteredMachines.forEach(m => {
+            targetMachines.forEach(m => {
                 machineList.innerHTML += `
                     <li>
                         ${m.name}
@@ -374,7 +385,7 @@
         async function editSelectedLine() {
             const select = document.getElementById('settingLineSelect');
             const id = select.value;
-            if (!id) return alert('請先選擇要修改的線別');
+            if (!id) return alert('無法編輯「未綁定」選項，請選擇實際的線別');
             const oldName = select.options[select.selectedIndex].text;
             const newName = prompt('新線別名稱：', oldName);
             if (newName && newName.trim() !== oldName) {
@@ -387,7 +398,7 @@
         async function deleteSelectedLine() {
             const select = document.getElementById('settingLineSelect');
             const id = select.value;
-            if (!id) return alert('請先選擇要刪除的線別');
+            if (!id) return alert('無法刪除「未綁定」選項，請選擇實際的線別');
             if (confirm('警告：確定刪除此線別嗎？\n該線別底下綁定的「所有機台」也會一併受到影響！')) {
                 await db.from('lines').delete().eq('id', id);
                 fetchLines();
@@ -395,19 +406,18 @@
             }
         }
 
-        // 新增機台並重新抓取資料
         async function addNewMachineToLine() {
             const lineId = document.getElementById('settingLineSelect').value;
-            if (!lineId) return alert('請先在上方選擇要綁定的線別！');
+            if (!lineId) return alert('請先在上方選擇一條實際的線別，不能新增在未綁定區塊！');
             
             const name = document.getElementById('newMachineName').value.trim();
             if (!name) return alert('請輸入機台名稱！');
 
             const { error } = await db.from('machines').insert([{ name: name, line_id: lineId }]);
-            if (error) return alert('新增機台失敗: ' + error.message);
+            if (error) return alert('新增機台失敗: 可能是名稱重複了 (' + error.message + ')');
             
             document.getElementById('newMachineName').value = '';
-            await fetchMachines(); // 抓完資料後會自動呼叫 renderSettingMachineList
+            await fetchMachines(); 
         }
 
         async function fetchMachines() {
