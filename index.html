@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>中科廠 稼動率統計</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -21,7 +21,7 @@
         .nav-links li a.active { background-color: #3182ce; color: white; border-left: 5px solid #63b3ed; }
         .nav-links li a i { margin-right: 10px; width: 20px; text-align: center; }
 
-        #main-content { flex: 1; display: flex; flex-direction: column; }
+        #main-content { flex: 1; display: flex; flex-direction: column; width: 100%; }
         header { background: #fff; padding: 15px 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); display: flex; align-items: center; }
         #menu-toggle { font-size: 20px; background: none; border: none; cursor: pointer; margin-right: 15px; color: #4a5568; }
         #page-title { margin: 0; font-size: 1.2rem; color: #2c3e50; font-weight: bold; }
@@ -72,6 +72,41 @@
         .chart-container { margin-top: 30px; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); height: 350px; display: flex; justify-content: center; }
         
         optgroup { font-weight: bold; color: #2c3e50; }
+
+        /* ================= ★ 新增：手機版專屬響應式設定 ★ ================= */
+        @media (max-width: 768px) {
+            /* 側邊欄改為浮動式抽屜 */
+            #sidebar {
+                position: absolute;
+                z-index: 9999;
+                height: 100%;
+                box-shadow: 2px 0 10px rgba(0,0,0,0.5);
+                display: none; /* 預設隱藏，靠左上角按鈕展開 */
+            }
+            /* 表單全部改為單行直式排列 */
+            .form-grid { grid-template-columns: 1fr !important; gap: 10px; }
+            .stat-cards { grid-template-columns: 1fr !important; }
+            
+            /* 讓並排的按鈕與輸入框在小螢幕自動換行或直立 */
+            .input-group { flex-direction: column; align-items: stretch; }
+            .input-group > * { width: 100%; margin-bottom: 5px; }
+            
+            /* 唯獨時間選單保持水平，節省空間 */
+            .time-picker { flex-direction: row; }
+            
+            /* 表格太寬時允許左右滑動，不會撐破畫面 */
+            .data-table { display: block; overflow-x: auto; white-space: nowrap; width: 100%; }
+            
+            /* 縮小內距以騰出更多視覺空間 */
+            .content-wrapper { padding: 10px; }
+            .section { padding: 15px; }
+            .chart-container { height: 280px; padding: 10px; }
+        }
+
+        /* 確保在大螢幕時側邊欄永遠正常顯示 */
+        @media (min-width: 769px) {
+            #sidebar { display: flex !important; position: relative; }
+        }
     </style>
 </head>
 <body>
@@ -181,7 +216,7 @@
                 </div>
 
                 <div class="section" style="margin-top: 20px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
                         <div style="display: flex; align-items: center; gap: 15px;">
                             <h2 style="margin: 0;">統計結果</h2>
                             <select id="summaryMachineFilter" onchange="renderSummaryAndChart()" style="padding: 5px 10px; border-radius: 4px; border: 1px solid #cbd5e0; min-width: 150px; font-size: 16px; font-weight: bold; color: #3182ce; background-color: #ebf8ff;">
@@ -525,7 +560,6 @@
             renderDowntimeTable(); await db.from('production_records').delete().eq('id', id); loadRecordsByDate(); window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        // ================= ★ OEE 統計邏輯 (頂部儀表板跟隨機台切換) ★ =================
         function getMinutesDiff(start, end) {
             if (!start || !end) return 0; const [sH, sM] = start.split(':').map(Number); const [eH, eM] = end.split(':').map(Number); return (eH * 60 + eM) - (sH * 60 + sM);
         }
@@ -552,7 +586,6 @@
                 return; 
             }
 
-            // 1. 建立頂部的機台切換下拉選單 (只列出被查詢到的機台，不放「全部加總」選項)
             const summarySelect = document.getElementById('summaryMachineFilter');
             summarySelect.innerHTML = '';
             const uniqueMachinesInQuery = {};
@@ -562,7 +595,6 @@
                 summarySelect.innerHTML += `<option value="${id}">${name}</option>`;
             }
 
-            // 2. 建立下方「每日機台明細」與「Excel導出資料」(這裡依然會顯示查詢出來的所有明細)
             currentExportData = []; let detailHTML = '';
             records.forEach(record => {
                 const plannedMin = getMinutesDiff(record.start_time, record.end_time);
@@ -639,18 +671,15 @@
 
             document.getElementById('statDetailBody').innerHTML = detailHTML;
 
-            // 3. 呼叫單一機台的圖表與數據渲染 (預設會帶入第一個機台)
             renderSummaryAndChart();
         }
 
-        // 只計算與渲染下拉選單所選擇的該台機台數據
         function renderSummaryAndChart() {
             if (!currentQueriedRecords || currentQueriedRecords.length === 0) return;
 
             const selectedMachineId = document.getElementById('summaryMachineFilter').value;
             if (!selectedMachineId) return; 
 
-            // 只過濾出被選擇的這台機台的紀錄
             let filteredRecords = currentQueriedRecords.filter(r => r.machine_id === selectedMachineId);
 
             let totalActualAvailTime = 0; 
@@ -690,15 +719,12 @@
 
             let totalOEE = totalActualAvailTime > 0 ? ((totalActualAvailTime - grandTotalUnplannedDowntime) / totalActualAvailTime) * 100 : 0;
             
-            // ★ 更新最上方的兩張卡片
             document.getElementById('statOEE').innerText = totalOEE.toFixed(1) + '%'; 
             document.getElementById('statTotalDowntime').innerText = grandTotalUnplannedDowntime + ' 分鐘';
 
-            // ★ 更新中間的統整表格
             let summaryDowntimeStr = Object.entries(reasonDowntimeMap).map(([r, t]) => `${r}: <span style="font-weight:bold;">${t}分</span>`).join('<br>') || '無停機紀錄';
             document.getElementById('statSummaryBody').innerHTML = `<tr><td>${totalActualAvailTime} 分鐘</td><td style="text-align:left; line-height:1.5;">${summaryDowntimeStr}</td><td style="color:#e53e3e; font-weight:bold; font-size:1.1rem;">${grandTotalUnplannedDowntime} 分鐘</td><td style="font-size:1.2rem; font-weight:bold; color:#3182ce;">${totalOEE.toFixed(2)}%</td></tr>`;
 
-            // ★ 更新圓餅圖
             const ctx = document.getElementById('downtimeChart').getContext('2d'); if (downtimeChartInstance) downtimeChartInstance.destroy();
             
             let sumForAllPie = Object.values(reasonDowntimeMap).reduce((a, b) => a + b, 0);
@@ -711,8 +737,25 @@
         }
 
         function exportToExcel() { if (currentExportData.length === 0) return alert('請先查詢資料！'); const ws = XLSX.utils.json_to_sheet(currentExportData); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "OEE紀錄"); XLSX.writeFile(wb, `中科廠_稼動率統計表_${new Date().toISOString().slice(0, 10)}.xlsx`); }
-        function switchPage(pageId, title) { document.querySelectorAll('.page-section').forEach(s => s.style.display = 'none'); document.getElementById(pageId).style.display = 'block'; document.getElementById('page-title').innerText = title; document.querySelectorAll('.nav-links a').forEach(l => l.classList.remove('active')); document.getElementById('nav-' + pageId).classList.add('active'); }
-        function toggleSidebar() { const sidebar = document.getElementById('sidebar'); sidebar.style.display = sidebar.style.display === 'none' || sidebar.style.display === '' ? 'flex' : 'none'; }
+        
+        // ★ 修改：手機版點擊菜單後自動收起側邊欄
+        function switchPage(pageId, title) { 
+            document.querySelectorAll('.page-section').forEach(s => s.style.display = 'none'); 
+            document.getElementById(pageId).style.display = 'block'; 
+            document.getElementById('page-title').innerText = title; 
+            document.querySelectorAll('.nav-links a').forEach(l => l.classList.remove('active')); 
+            document.getElementById('nav-' + pageId).classList.add('active'); 
+            
+            if (window.innerWidth <= 768) {
+                document.getElementById('sidebar').style.display = 'none';
+            }
+        }
+        
+        function toggleSidebar() { 
+            const sidebar = document.getElementById('sidebar'); 
+            const isHidden = window.getComputedStyle(sidebar).display === 'none';
+            sidebar.style.display = isHidden ? 'flex' : 'none'; 
+        }
     </script>
 </body>
 </html>
