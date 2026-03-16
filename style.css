@@ -1,4 +1,3 @@
-/* 全局設定 */
 body { font-family: "Microsoft JhengHei", Arial, sans-serif; margin: 0; display: flex; height: 100vh; background-color: #f4f7f6; color: #333; overflow: hidden; }
 #sidebar { width: 250px; background-color: #1a202c; color: white; transition: all 0.3s; display: flex; flex-direction: column; }
 .sidebar-header { padding: 20px; background-color: #2d3748; text-align: center; border-bottom: 1px solid #4a5568; }
@@ -18,7 +17,6 @@ header { background: #fff; padding: 15px 20px; box-shadow: 0 2px 4px rgba(0,0,0,
 .section { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); flex: 1; }
 .input-group { display: flex; gap: 10px; margin-bottom: 15px; }
 
-/* ======== 新增：自製 24H 時間選單排版 ======== */
 .time-picker { display: flex; align-items: center; gap: 5px; }
 .time-picker select { flex: 1; padding: 10px; border: 1px solid #cbd5e0; border-radius: 4px; box-sizing: border-box; }
 .time-picker span { font-weight: bold; color: #4a5568; }
@@ -28,7 +26,7 @@ button { padding: 10px 15px; background-color: #3182ce; color: white; border: no
 button:hover { background-color: #2b6cb0; }
 
 ul { list-style: none; padding: 0; }
-li { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #edf2f7; }
+li { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #edf2f7; background-color: #fff; margin-bottom: 5px; border-radius: 4px; }
 .btn-group { display: flex; gap: 5px; }
 .edit-btn { background-color: #48bb78; padding: 5px 10px; font-size: 12px; }
 .edit-btn:hover { background-color: #38a169; }
@@ -37,6 +35,9 @@ li { display: flex; justify-content: space-between; align-items: center; padding
 
 .form-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 15px; align-items: end; }
 @media (max-width: 1200px) { .form-grid { grid-template-columns: 1fr 1fr; } }
+/* 基礎設定雙欄響應式 */
+@media (max-width: 900px) { .container { grid-template-columns: 1fr !important; } }
+
 .form-grid label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 14px; color: #4a5568; }
 
 .data-table { width: 100%; border-collapse: collapse; margin-top: 15px; }
