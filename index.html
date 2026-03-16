@@ -137,6 +137,7 @@
                     <h2>2. 新增機台與停機紀錄</h2>
                     <div class="form-grid">
                         <div><label>機台名稱</label><select id="recordMachine"><option value="">請先選擇上方線別</option></select></div>
+                        <div><label>登記人</label><select id="recordOperator"><option value="">請先至基礎設定新增</option></select></div>
                     </div>
 
                     <div style="background-color: #f7fafc; padding: 15px; border-radius: 8px; margin-top: 15px;">
@@ -163,9 +164,9 @@
                     <h2>3. 今日已輸入紀錄</h2>
                     <table class="data-table">
                         <thead>
-                            <tr><th>線別</th><th>機台</th><th>開線~結束</th><th>停機明細</th><th>總停機</th><th>操作</th></tr>
+                            <tr><th>線別</th><th>機台</th><th>登記人</th><th>開線~結束</th><th>停機明細</th><th>總停機</th><th>操作</th></tr>
                         </thead>
-                        <tbody id="dailyHistoryTable"><tr><td colspan="6" style="text-align:center;">請選擇日期以載入紀錄...</td></tr></tbody>
+                        <tbody id="dailyHistoryTable"><tr><td colspan="7" style="text-align:center;">請選擇日期以載入紀錄...</td></tr></tbody>
                     </table>
                 </div>
             </div>
@@ -247,7 +248,7 @@
             </div>
 
             <div id="basic-settings" class="page-section" style="display: none;">
-                <div class="container" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px;">
+                <div class="container" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px;">
                     
                     <div class="section">
                         <h2><i class="fas fa-network-wired"></i> 線別與機台管理</h2>
@@ -298,6 +299,16 @@
                         <ul id="unplannedReasonList"></ul>
                     </div>
 
+                    <div class="section" style="border-top: 4px solid #3182ce;">
+                        <h2><i class="fas fa-users"></i> 作業人員</h2>
+                        <p style="font-size: 12px; color: #718096; margin-top: 0;">(負責報工的登記人員)</p>
+                        <div class="input-group">
+                            <input type="text" id="operatorNameInput" placeholder="例: 王小明">
+                            <button onclick="addOperator()">新增人員</button>
+                        </div>
+                        <ul id="operatorList"></ul>
+                    </div>
+
                 </div>
             </div>
 
@@ -324,6 +335,7 @@
             populateTimeSelects();
             fetchLines().then(() => fetchMachines());
             fetchReasons();
+            fetchOperators(); // ★ 新增：載入作業人員
             
             const today = new Date();
             document.getElementById('recordDate').valueAsDate = today;
@@ -337,6 +349,61 @@
             
             loadRecordsByDate();
         });
+
+        // ================= ★ 作業人員相關邏輯 ★ =================
+        async function fetchOperators() {
+            const { data } = await db.from('operators').select('*').order('created_at', { ascending: true });
+            const list = document.getElementById('operatorList');
+            const select = document.getElementById('recordOperator');
+            
+            list.innerHTML = ''; 
+            select.innerHTML = '<option value="">請選擇人員</option>';
+            
+            if(data) {
+                data.forEach(op => {
+                    list.innerHTML += `<li>${op.name} <div class="btn-group"><button class="edit-btn" onclick="editOperator('${op.id}', '${op.name}')">編輯</button><button class="delete-btn" onclick="deleteOperator('${op.id}')">刪除</button></div></li>`;
+                    select.innerHTML += `<option value="${op.name}">${op.name}</option>`;
+                });
+                // 自動記憶上次選擇的人員
+                const savedOp = localStorage.getItem('smtSavedOperator');
+                if(savedOp) select.value = savedOp;
+            }
+        }
+        
+        async function addOperator() { 
+            const name = document.getElementById('operatorNameInput').value.trim(); 
+            if (!name) return alert('請輸入人員名稱'); 
+            const { error } = await db.from('operators').insert([{ name }]); 
+            if (error) return alert('新增失敗 (可能名稱重複)');
+            document.getElementById('operatorNameInput').value=''; 
+            fetchOperators(); 
+        }
+        
+        async function editOperator(id, oldName) { 
+            const newName = prompt('新人員名稱：', oldName); 
+            if (newName && newName.trim() !== oldName) { 
+                await db.from('operators').update({ name: newName.trim() }).eq('id', id); 
+                fetchOperators(); 
+            } 
+        }
+        
+        async function deleteOperator(id) { 
+            if (confirm('確定刪除此人員嗎？')) { 
+                await db.from('operators').delete().eq('id', id); 
+                fetchOperators(); 
+            } 
+        }
+
+        // 用於編輯展開時動態產生下拉選單
+        function generateOperatorSelectHTML(selectedName) {
+            const selectEle = document.getElementById('recordOperator');
+            let html = `<select id="editOperatorName" style="padding:5px; border-radius:4px; border:1px solid #cbd5e0; width:auto;">`;
+            Array.from(selectEle.options).forEach(opt => {
+                html += `<option value="${opt.value}" ${opt.value === selectedName ? 'selected' : ''}>${opt.text}</option>`;
+            });
+            html += `</select>`;
+            return html;
+        }
 
         // ================= 時間選單工具 =================
         function populateTimeSelects() {
@@ -504,7 +571,7 @@
         async function editReason(id, oldName) { const newName = prompt('新停機項目名稱：', oldName); if (newName) { await db.from('downtime_reasons').update({ name: newName.trim() }).eq('id', id); fetchReasons(); } }
         async function deleteReason(id) { if (confirm('確定刪除？')) { await db.from('downtime_reasons').delete().eq('id', id); fetchReasons(); } }
 
-        // ================= 每日報工儲存 (取消合併) =================
+        // ================= 每日報工儲存 (獨立明細) =================
         function addDowntimeToList() {
             const select = document.getElementById('downtimeReasonSelect');
             const reasonId = select.value; 
@@ -517,7 +584,6 @@
             
             if (totalDuration <= 0) return alert('停機時間必須大於 0 分鐘！');
             
-            // ★ 修改：直接 push 每一筆，不進行合併
             currentDowntimeEvents.push({ reasonId, reasonName, duration: totalDuration, isPlanned: isPlanned });
             
             select.value = ''; document.getElementById('downtimeHour').value = '0'; document.getElementById('downtimeMinute').value = '0';
@@ -538,14 +604,16 @@
             const date = document.getElementById('recordDate').value; const line = document.getElementById('recordLine').value;
             const startTime = getSelectedTime('startHour', 'startMinute'); const endTime = getSelectedTime('endHour', 'endMinute'); 
             const machineId = document.getElementById('recordMachine').value; const isRollingBreak = document.getElementById('isRollingBreak').checked;
+            const operatorName = document.getElementById('recordOperator').value; // ★ 取得登記人
 
-            if (!date || !line || !startTime || !endTime || !machineId) return alert('請完整填寫上方共用資料 以及 機台名稱！');
+            if (!date || !line || !startTime || !endTime || !machineId || !operatorName) return alert('請完整填寫上方共用資料、機台名稱 以及 登記人！');
 
             localStorage.setItem('smtSavedLine', line);
+            localStorage.setItem('smtSavedOperator', operatorName); // 自動記憶
 
             const { data: recordData, error: recordError } = await db.from('production_records').insert([{
                 record_date: date, line_name: line, machine_id: machineId, start_time: startTime,
-                end_time: endTime, early_end_time: null, is_rolling_break: isRollingBreak
+                end_time: endTime, early_end_time: null, is_rolling_break: isRollingBreak, operator_name: operatorName
             }]).select();
 
             if (recordError) return alert('主紀錄儲存失敗：' + recordError.message);
@@ -571,7 +639,8 @@
         function renderDailyHistoryTable() {
             const tbody = document.getElementById('dailyHistoryTable'); tbody.innerHTML = '';
             if (loadedDailyRecords.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">本日尚無機台紀錄。</td></tr>';
+                // colspan 更新為 7
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">本日尚無機台紀錄。</td></tr>';
                 return;
             }
             
@@ -579,11 +648,12 @@
                 if (inlineEditingId === record.id) {
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
-                        <td colspan="6" style="background-color: #ebf8ff; padding: 15px; border-radius: 8px; text-align: left; border: 2px solid #3182ce;">
+                        <td colspan="7" style="background-color: #ebf8ff; padding: 15px; border-radius: 8px; text-align: left; border: 2px solid #3182ce;">
                             <div style="font-weight:bold; margin-bottom:10px; color:#2b6cb0; font-size:16px;">
                                 <i class="fas fa-edit"></i> 編輯明細：${record.line_name} - ${record.machines.name}
                             </div>
                             <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 10px; align-items: center; background:#fff; padding:10px; border-radius:6px; border:1px solid #e2e8f0;">
+                                <div style="display:flex; align-items:center;"><b>登記人:</b>&nbsp; ${generateOperatorSelectHTML(record.operator_name)}</div>
                                 <div style="display:flex; align-items:center;"><b>開線:</b>&nbsp; ${generateTimePickerHTML('editStart', record.start_time)}</div>
                                 <div style="display:flex; align-items:center;"><b>結束:</b>&nbsp; ${generateTimePickerHTML('editEnd', record.end_time)}</div>
                                 <div style="display: flex; align-items: center; gap: 5px;">
@@ -614,7 +684,6 @@
                     let totalDowntime = 0; 
                     let dtHtml = '';
                     
-                    // ★ 修改：在列表顯示時不進行合併，獨立顯示每一筆
                     if (record.downtime_events && record.downtime_events.length > 0) {
                         record.downtime_events.forEach(e => { 
                             totalDowntime += e.duration_minutes; 
@@ -629,6 +698,7 @@
                     tr.innerHTML = `
                         <td>${record.line_name}</td>
                         <td>${record.machines.name}</td>
+                        <td>${record.operator_name || '-'}</td>
                         <td>${record.start_time} ~ ${record.end_time}</td>
                         <td style="text-align:left; font-size:13px; line-height:1.4;">${dtHtml}</td>
                         <td style="color:#e53e3e; font-weight:bold; font-size:16px;">${totalDowntime}</td>
@@ -650,7 +720,6 @@
             inlineEditingId = id;
             const record = loadedDailyRecords.find(r => r.id === id);
             inlineDowntimeEvents = [];
-            // ★ 修改：展開編輯時不合併，將舊資料獨立 push
             if (record.downtime_events) {
                 record.downtime_events.forEach(e => {
                     inlineDowntimeEvents.push({
@@ -691,7 +760,6 @@
             
             if (totalDuration <= 0) return alert('停機時間必須大於 0 分鐘！');
             
-            // ★ 修改：直接 push 每一筆，不進行合併
             inlineDowntimeEvents.push({ reasonId, reasonName, duration: totalDuration, isPlanned: isPlanned });
 
             select.value = ''; document.getElementById('editDtHour').value = '0'; document.getElementById('editDtMinute').value = '0';
@@ -704,11 +772,12 @@
             const startTime = getSelectedTime('editStartHour', 'editStartMinute');
             const endTime = getSelectedTime('editEndHour', 'editEndMinute');
             const isRollingBreak = document.getElementById('editRolling').checked;
+            const operatorName = document.getElementById('editOperatorName').value;
 
-            if (!startTime || !endTime) return alert('開線與結束時間必填！');
+            if (!startTime || !endTime || !operatorName) return alert('開線、結束時間與登記人皆為必填！');
 
             const { error: recordError } = await db.from('production_records').update({
-                start_time: startTime, end_time: endTime, early_end_time: null, is_rolling_break: isRollingBreak
+                start_time: startTime, end_time: endTime, early_end_time: null, is_rolling_break: isRollingBreak, operator_name: operatorName
             }).eq('id', recordId);
 
             if (recordError) return alert('主紀錄更新失敗：' + recordError.message);
@@ -759,7 +828,7 @@
                 
                 let recordPlannedDowntime = 0;
                 let recordUnplannedDowntime = 0; 
-                let recordReasonMap = {}; 
+                let recordReasonMap = {}; // ★ 這裡在統計區依然會進行加總合併
                 
                 if (record.downtime_events) {
                     record.downtime_events.forEach(event => {
@@ -777,7 +846,7 @@
                 
                 if (rKeys.length === 0) {
                     currentExportData.push({ 
-                        "日期": record.record_date, "線別": record.line_name, "機台": record.machines.name, 
+                        "日期": record.record_date, "線別": record.line_name, "機台": record.machines.name, "登記人": record.operator_name || '-',
                         "開線時間": record.start_time, "結束時間": record.end_time,
                         "有輪休": record.is_rolling_break ? '是' : '否', "計畫性停機扣除(分)": recordPlannedDowntime, "實際可用時間(分)": actualAvailMin, 
                         "停機項目": "無", "屬性": "-", "該項停機(分)": 0, "非計畫總停機(損失分)": 0, "稼動率(%)": recordOEE.toFixed(2) + '%' 
@@ -789,7 +858,7 @@
                         const typeStr = tInfo.isPlanned ? '計畫(扣可用)' : '非計畫(算損失)';
                         
                         currentExportData.push({ 
-                            "日期": record.record_date, "線別": record.line_name, "機台": record.machines.name, 
+                            "日期": record.record_date, "線別": record.line_name, "機台": record.machines.name, "登記人": record.operator_name || '-',
                             "開線時間": record.start_time, "結束時間": record.end_time,
                             "有輪休": record.is_rolling_break ? '是' : '否', "計畫性停機扣除(分)": recordPlannedDowntime, "實際可用時間(分)": actualAvailMin, 
                             "停機項目": rName, "屬性": typeStr, "該項停機(分)": tInfo.duration, "非計畫總停機(損失分)": recordUnplannedDowntime, "稼動率(%)": recordOEE.toFixed(2) + '%' 
