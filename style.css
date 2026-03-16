@@ -3,16 +3,16 @@ body {
     font-family: "Microsoft JhengHei", Arial, sans-serif;
     margin: 0;
     display: flex;
-    height: 100vh; /* 填滿整個螢幕高度 */
+    height: 100vh;
     background-color: #f4f7f6;
     color: #333;
-    overflow: hidden; /* 防止整個網頁滾動，只讓內容區滾動 */
+    overflow: hidden;
 }
 
 /* 左側邊欄 (Sidebar) */
 #sidebar {
     width: 250px;
-    background-color: #1a202c; /* 深藍/黑色背景，類似你的附圖 */
+    background-color: #1a202c;
     color: white;
     transition: all 0.3s;
     display: flex;
@@ -54,7 +54,7 @@ body {
 
 /* 被選中的菜單樣式 */
 .nav-links li a.active {
-    background-color: #3182ce; /* 藍色亮起 */
+    background-color: #3182ce;
     color: white;
     border-left: 5px solid #63b3ed;
 }
@@ -67,7 +67,7 @@ body {
 
 /* 右側主內容區 */
 #main-content {
-    flex: 1; /* 佔滿剩下的空間 */
+    flex: 1;
     display: flex;
     flex-direction: column;
 }
@@ -94,16 +94,17 @@ header {
     margin: 0;
     font-size: 1.2rem;
     color: #2c3e50;
+    font-weight: bold;
 }
 
 /* 內容區塊 */
 .content-wrapper {
     padding: 20px;
-    overflow-y: auto; /* 內容太多時可以在這裡往下滾動 */
+    overflow-y: auto;
     flex: 1;
 }
 
-/* 基礎設定內的排版 (沿用之前的) */
+/* 基礎設定內的排版 */
 .container {
     display: flex;
     gap: 20px;
