@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMT 機台稼動率統計系統</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1>基礎設置介面</h1>
+
+    <div class="container">
+        <div class="section">
+            <h2>機台清單</h2>
+            <div class="input-group">
+                <input type="text" id="machineName" placeholder="輸入機台名稱 (例: NXT-III)">
+                <button onclick="addMachine()">新增機台</button>
+            </div>
+            <ul id="machineList"></ul>
+        </div>
+
+        <div class="section">
+            <h2>停機項目清單</h2>
+            <div class="input-group">
+                <input type="text" id="reasonName" placeholder="輸入停機項目 (例: 首件、異常排除)">
+                <button onclick="addReason()">新增項目</button>
+            </div>
+            <ul id="reasonList"></ul>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
