@@ -574,7 +574,7 @@
         async function editReason(id, oldName) { const newName = prompt('新停機項目名稱：', oldName); if (newName) { await db.from('downtime_reasons').update({ name: newName.trim() }).eq('id', id); fetchReasons(); } }
         async function deleteReason(id) { if (confirm('確定刪除？')) { await db.from('downtime_reasons').delete().eq('id', id); fetchReasons(); } }
 
-        // ================= 每日報工儲存 =================
+        // ================= ★ 每日報工儲存 (新增編輯按鈕) ★ =================
         function addDowntimeToList() {
             const select = document.getElementById('downtimeReasonSelect');
             const reasonId = select.value; 
@@ -582,7 +582,8 @@
             
             const reasonName = select.options[select.selectedIndex].text;
             const isPlanned = select.options[select.selectedIndex].getAttribute('data-planned') === 'true';
-            const hours = parseInt(document.getElementById('downtimeHour').value); const minutes = parseInt(document.getElementById('downtimeMinute').value);
+            const hours = parseInt(document.getElementById('downtimeHour').value); 
+            const minutes = parseInt(document.getElementById('downtimeMinute').value);
             const totalDuration = (hours * 60) + minutes;
             const remark = document.getElementById('downtimeRemark').value.trim(); 
             
@@ -593,13 +594,37 @@
             select.value = ''; document.getElementById('downtimeHour').value = '0'; document.getElementById('downtimeMinute').value = '0'; document.getElementById('downtimeRemark').value = '';
             renderDowntimeTable();
         }
+
+        // 載入回輸入框以供編輯
+        function editNewDowntime(idx) {
+            const item = currentDowntimeEvents[idx];
+            document.getElementById('downtimeReasonSelect').value = item.reasonId;
+            document.getElementById('downtimeHour').value = Math.floor(item.duration / 60);
+            document.getElementById('downtimeMinute').value = item.duration % 60;
+            document.getElementById('downtimeRemark').value = item.remark || '';
+            currentDowntimeEvents.splice(idx, 1);
+            renderDowntimeTable();
+        }
+
         function removeDowntimeFromList(index) { currentDowntimeEvents.splice(index, 1); renderDowntimeTable(); }
+
         function renderDowntimeTable() {
             const tbody = document.getElementById('downtimeTableBody'); tbody.innerHTML = ''; let total = 0;
             currentDowntimeEvents.forEach((event, index) => { 
                 total += event.duration; 
                 const typeTag = event.isPlanned ? '<span style="color:#d69e2e;font-weight:bold;">[計畫]</span>' : '<span style="color:#e53e3e;font-weight:bold;">[非計畫]</span>';
-                tbody.innerHTML += `<tr><td>${event.reasonName}</td><td>${typeTag}</td><td>${event.duration}</td><td style="max-width: 150px; word-break: break-all; white-space: normal;">${event.remark || '-'}</td><td><button class="delete-btn" onclick="removeDowntimeFromList(${index})">移除</button></td></tr>`; 
+                tbody.innerHTML += `<tr>
+                    <td>${event.reasonName}</td>
+                    <td>${typeTag}</td>
+                    <td>${event.duration}</td>
+                    <td style="max-width: 150px; word-break: break-all; white-space: normal;">${event.remark || '-'}</td>
+                    <td>
+                        <div class="btn-group" style="justify-content:center;">
+                            <button class="edit-btn" onclick="editNewDowntime(${index})"><i class="fas fa-edit"></i></button>
+                            <button class="delete-btn" onclick="removeDowntimeFromList(${index})"><i class="fas fa-times"></i></button>
+                        </div>
+                    </td>
+                </tr>`; 
             });
             document.getElementById('totalDowntimeDisplay').innerText = total;
         }
@@ -628,11 +653,11 @@
             }
             alert('機台紀錄儲存成功！你可以繼續輸入下一台機台。');
             document.getElementById('recordMachine').value = ''; 
-            document.getElementById('recordRemark').value = ''; // 清空備註(兼容舊版移除殘留)
+            document.getElementById('downtimeRemark').value = ''; // 清空備註(兼容舊版移除殘留)
             currentDowntimeEvents = []; renderDowntimeTable(); loadRecordsByDate();
         }
 
-        // ================= 每日報工表格展開編輯邏輯 =================
+        // ================= ★ 每日報工表格展開編輯邏輯 (加入編輯子項目) ★ =================
         async function loadRecordsByDate() {
             const date = document.getElementById('recordDate').value; if (!date) return;
             const { data, error } = await db.from('production_records').select('*, machines(name), downtime_events(id, duration_minutes, remark, downtime_reasons(id, name, is_planned))').eq('record_date', date).order('created_at', { ascending: false });
@@ -700,8 +725,8 @@
                         record.downtime_events.forEach(e => { 
                             totalDowntime += e.duration_minutes; 
                             const typeTag = e.downtime_reasons.is_planned ? '<span style="color:#d69e2e; font-weight:bold;">[計]</span>' : '<span style="color:#e53e3e; font-weight:bold;">[非]</span>';
-                            const remarkText = e.remark ? ` <span style="color:#718096; font-size:12px;">(${e.remark})</span>` : '';
-                            dtHtml += `<div style="margin-bottom:2px; word-break: break-all; white-space: normal;">${typeTag} ${e.downtime_reasons.name}: <b style="color:#2d3748;">${e.duration_minutes}</b>分${remarkText}</div>`;
+                            const remarkText = e.remark ? ` <span style="color:#718096; font-size:12px; word-break: break-all;">(${e.remark})</span>` : '';
+                            dtHtml += `<div style="margin-bottom:2px; white-space: normal; word-break: break-all;">${typeTag} ${e.downtime_reasons.name}: <b style="color:#2d3748;">${e.duration_minutes}</b>分${remarkText}</div>`;
                         });
                     } else {
                         dtHtml = '<span style="color:#a0aec0;">無停機</span>';
@@ -749,18 +774,35 @@
 
         function cancelInlineEdit() { inlineEditingId = null; renderDailyHistoryTable(); }
 
+        // ★ 修改：在明細區塊加入編輯按鈕
         function generateInlineDowntimeListHTML() {
             if (inlineDowntimeEvents.length === 0) return '<span style="color:#a0aec0; font-size:13px;">尚無停機紀錄</span>';
             let html = '';
             inlineDowntimeEvents.forEach((e, idx) => {
                 const typeTag = e.isPlanned ? '<span style="color:#d69e2e;">[計]</span>' : '<span style="color:#e53e3e;">[非]</span>';
                 const rText = e.remark ? ` <i style="color:#718096; font-size:12px;">(${e.remark})</i>` : '';
-                html += `<div style="background:#f7fafc; padding:5px 10px; border-radius:4px; border:1px solid #e2e8f0; display:inline-flex; align-items:center; justify-content:space-between; max-width:350px;">
-                    <span style="word-break: break-all; white-space: normal;">${typeTag} ${e.reasonName} - <b>${e.duration}</b> 分鐘${rText}</span>
-                    <button onclick="removeInlineDowntime(${idx})" style="background:#e53e3e; color:white; border:none; border-radius:3px; cursor:pointer; padding:2px 8px; margin-left:15px;"><i class="fas fa-times"></i></button>
+                html += `<div style="background:#f7fafc; padding:5px 10px; border-radius:4px; border:1px solid #e2e8f0; display:flex; align-items:center; justify-content:space-between; max-width:450px; margin-bottom:5px;">
+                    <span style="word-break: break-all; white-space: normal; padding-right:10px;">${typeTag} ${e.reasonName} - <b>${e.duration}</b> 分鐘${rText}</span>
+                    <div style="display:flex; gap:5px; flex-shrink:0;">
+                        <button onclick="editInlineDowntime(${idx})" style="background:#48bb78; color:white; border:none; border-radius:3px; cursor:pointer; padding:4px 8px;" title="載入編輯"><i class="fas fa-edit"></i></button>
+                        <button onclick="removeInlineDowntime(${idx})" style="background:#e53e3e; color:white; border:none; border-radius:3px; cursor:pointer; padding:4px 8px;" title="移除"><i class="fas fa-times"></i></button>
+                    </div>
                 </div>`;
             });
             return html;
+        }
+
+        // ★ 新增：將展開的子明細載回輸入框供修改
+        function editInlineDowntime(idx) {
+            const item = inlineDowntimeEvents[idx];
+            document.getElementById('editDtReason').value = item.reasonId;
+            document.getElementById('editDtHour').value = Math.floor(item.duration / 60);
+            document.getElementById('editDtMinute').value = item.duration % 60;
+            document.getElementById('editDtRemark').value = item.remark || '';
+            
+            // 從清單中移除，等使用者改完再按「加入停機」
+            inlineDowntimeEvents.splice(idx, 1);
+            document.getElementById('inlineDowntimeListContainer').innerHTML = generateInlineDowntimeListHTML();
         }
 
         function addInlineDowntime() {
@@ -1012,21 +1054,16 @@
             document.getElementById('page-title').innerText = title; 
             document.querySelectorAll('.nav-links a').forEach(l => l.classList.remove('active')); 
             document.getElementById('nav-' + pageId).classList.add('active'); 
-            
-            // ★ 修改：透過 class 切換狀態來收合側邊欄，確保不會被 inline style 綁死
-            const sidebar = document.getElementById('sidebar');
-            if (window.innerWidth <= 768) {
-                sidebar.style.display = 'none';
-            }
+            if (window.innerWidth <= 768) document.getElementById('sidebar').style.display = 'none';
         }
         
         function toggleSidebar() { 
-            // ★ 修改：移除 !important 寫法，單純切換 display 屬性
             const sidebar = document.getElementById('sidebar'); 
-            if (sidebar.style.display === 'none' || sidebar.style.display === '') {
-                sidebar.style.display = 'flex';
+            const isHidden = window.getComputedStyle(sidebar).display === 'none';
+            if (isHidden) {
+                sidebar.style.setProperty('display', 'flex', 'important');
             } else {
-                sidebar.style.display = 'none';
+                sidebar.style.setProperty('display', 'none', 'important');
             }
         }
     </script>
