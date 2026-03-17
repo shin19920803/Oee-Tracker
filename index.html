@@ -574,7 +574,7 @@
         async function editReason(id, oldName) { const newName = prompt('新停機項目名稱：', oldName); if (newName) { await db.from('downtime_reasons').update({ name: newName.trim() }).eq('id', id); fetchReasons(); } }
         async function deleteReason(id) { if (confirm('確定刪除？')) { await db.from('downtime_reasons').delete().eq('id', id); fetchReasons(); } }
 
-        // ================= ★ 每日報工儲存 (合併相同停機項目邏輯) ★ =================
+        // ================= 每日報工儲存 =================
         function addDowntimeToList() {
             const select = document.getElementById('downtimeReasonSelect');
             const reasonId = select.value; 
@@ -582,23 +582,14 @@
             
             const reasonName = select.options[select.selectedIndex].text;
             const isPlanned = select.options[select.selectedIndex].getAttribute('data-planned') === 'true';
-            const hours = parseInt(document.getElementById('downtimeHour').value); 
-            const minutes = parseInt(document.getElementById('downtimeMinute').value);
+            const hours = parseInt(document.getElementById('downtimeHour').value); const minutes = parseInt(document.getElementById('downtimeMinute').value);
             const totalDuration = (hours * 60) + minutes;
-            const remark = document.getElementById('downtimeRemark').value.trim(); // 取出備註
+            const remark = document.getElementById('downtimeRemark').value.trim(); 
             
             if (totalDuration <= 0) return alert('停機時間必須大於 0 分鐘！');
             
-            // ★ 修改：檢查是否已有相同項目，有就合併時間與備註，沒有就新增
-            const existingIdx = currentDowntimeEvents.findIndex(e => e.reasonId === reasonId);
-            if (existingIdx !== -1) {
-                currentDowntimeEvents[existingIdx].duration += totalDuration;
-                if (remark) {
-                    currentDowntimeEvents[existingIdx].remark = currentDowntimeEvents[existingIdx].remark ? currentDowntimeEvents[existingIdx].remark + ', ' + remark : remark;
-                }
-            } else {
-                currentDowntimeEvents.push({ reasonId, reasonName, duration: totalDuration, isPlanned: isPlanned, remark: remark });
-            }
+            // ★ 修改：直接存入獨立項目，且加上 word-break 強制斷行預防版面跑掉
+            currentDowntimeEvents.push({ reasonId, reasonName, duration: totalDuration, isPlanned: isPlanned, remark: remark });
 
             select.value = ''; document.getElementById('downtimeHour').value = '0'; document.getElementById('downtimeMinute').value = '0'; document.getElementById('downtimeRemark').value = '';
             renderDowntimeTable();
@@ -609,7 +600,8 @@
             currentDowntimeEvents.forEach((event, index) => { 
                 total += event.duration; 
                 const typeTag = event.isPlanned ? '<span style="color:#d69e2e;font-weight:bold;">[計畫]</span>' : '<span style="color:#e53e3e;font-weight:bold;">[非計畫]</span>';
-                tbody.innerHTML += `<tr><td>${event.reasonName}</td><td>${typeTag}</td><td>${event.duration}</td><td>${event.remark || '-'}</td><td><button class="delete-btn" onclick="removeDowntimeFromList(${index})">移除</button></td></tr>`; 
+                // ★ 修改：加入 word-break 確保長字元強制換行
+                tbody.innerHTML += `<tr><td>${event.reasonName}</td><td>${typeTag}</td><td>${event.duration}</td><td style="max-width: 150px; word-break: break-all; white-space: normal;">${event.remark || '-'}</td><td><button class="delete-btn" onclick="removeDowntimeFromList(${index})">移除</button></td></tr>`; 
             });
             document.getElementById('totalDowntimeDisplay').innerText = total;
         }
@@ -633,7 +625,6 @@
             if (recordError) return alert('主紀錄儲存失敗：' + recordError.message);
 
             if (currentDowntimeEvents.length > 0) {
-                // 將備註也塞入 downtime_events
                 const eventsToInsert = currentDowntimeEvents.map(event => ({ record_id: recordData[0].id, reason_id: event.reasonId, duration_minutes: event.duration, remark: event.remark || null }));
                 await db.from('downtime_events').insert(eventsToInsert);
             }
@@ -642,10 +633,9 @@
             currentDowntimeEvents = []; renderDowntimeTable(); loadRecordsByDate();
         }
 
-        // ================= ★ 每日報工表格展開編輯邏輯 ★ =================
+        // ================= 每日報工表格展開編輯邏輯 =================
         async function loadRecordsByDate() {
             const date = document.getElementById('recordDate').value; if (!date) return;
-            // ★ 修改：抓取時加入 remark 欄位
             const { data, error } = await db.from('production_records').select('*, machines(name), downtime_events(id, duration_minutes, remark, downtime_reasons(id, name, is_planned))').eq('record_date', date).order('created_at', { ascending: false });
             loadedDailyRecords = data || []; 
             inlineEditingId = null; 
@@ -708,22 +698,13 @@
                     let dtHtml = '';
                     
                     if (record.downtime_events && record.downtime_events.length > 0) {
-                        // 在顯示時也會把相同的項目合併並串接備註
-                        let dtMap = {};
                         record.downtime_events.forEach(e => { 
                             totalDowntime += e.duration_minutes; 
-                            const rId = e.downtime_reasons.id;
-                            if (!dtMap[rId]) {
-                                dtMap[rId] = { name: e.downtime_reasons.name, duration: 0, isPlanned: e.downtime_reasons.is_planned, remarks: [] };
-                            }
-                            dtMap[rId].duration += e.duration_minutes;
-                            if (e.remark) dtMap[rId].remarks.push(e.remark);
+                            const typeTag = e.downtime_reasons.is_planned ? '<span style="color:#d69e2e; font-weight:bold;">[計]</span>' : '<span style="color:#e53e3e; font-weight:bold;">[非]</span>';
+                            const remarkText = e.remark ? ` <span style="color:#718096; font-size:12px; word-break: break-all;">(${e.remark})</span>` : '';
+                            // ★ 修改：加入 word-break 確保文字能斷行
+                            dtHtml += `<div style="margin-bottom:2px; white-space: normal; word-break: break-all;">${typeTag} ${e.downtime_reasons.name}: <b style="color:#2d3748;">${e.duration_minutes}</b>分${remarkText}</div>`;
                         });
-                        for (const [rId, info] of Object.entries(dtMap)) {
-                            const typeTag = info.isPlanned ? '<span style="color:#d69e2e; font-weight:bold;">[計]</span>' : '<span style="color:#e53e3e; font-weight:bold;">[非]</span>';
-                            const remarkText = info.remarks.length > 0 ? ` <span style="color:#718096; font-size:12px;">(${info.remarks.join(', ')})</span>` : '';
-                            dtHtml += `<div style="margin-bottom:2px;">${typeTag} ${info.name}: <b style="color:#2d3748;">${info.duration}</b>分${remarkText}</div>`;
-                        }
                     } else {
                         dtHtml = '<span style="color:#a0aec0;">無停機</span>';
                     }
@@ -754,23 +735,16 @@
             inlineEditingId = id;
             const record = loadedDailyRecords.find(r => r.id === id);
             inlineDowntimeEvents = [];
-            // 載入舊資料時自動合併
             if (record.downtime_events) {
-                let dtMap = {};
                 record.downtime_events.forEach(e => {
-                    const rId = e.downtime_reasons.id;
-                    if (!dtMap[rId]) {
-                        dtMap[rId] = {
-                            reasonId: rId, reasonName: e.downtime_reasons.name,
-                            isPlanned: e.downtime_reasons.is_planned, duration: 0, remark: ''
-                        };
-                    }
-                    dtMap[rId].duration += e.duration_minutes;
-                    if (e.remark) {
-                        dtMap[rId].remark = dtMap[rId].remark ? dtMap[rId].remark + ', ' + e.remark : e.remark;
-                    }
+                    inlineDowntimeEvents.push({
+                        reasonId: e.downtime_reasons.id,
+                        reasonName: e.downtime_reasons.name,
+                        isPlanned: e.downtime_reasons.is_planned,
+                        duration: e.duration_minutes,
+                        remark: e.remark || ''
+                    });
                 });
-                inlineDowntimeEvents = Object.values(dtMap);
             }
             renderDailyHistoryTable(); 
         }
@@ -783,8 +757,9 @@
             inlineDowntimeEvents.forEach((e, idx) => {
                 const typeTag = e.isPlanned ? '<span style="color:#d69e2e;">[計]</span>' : '<span style="color:#e53e3e;">[非]</span>';
                 const rText = e.remark ? ` <i style="color:#718096; font-size:12px;">(${e.remark})</i>` : '';
+                // ★ 修改：加入 word-break 確保文字能斷行
                 html += `<div style="background:#f7fafc; padding:5px 10px; border-radius:4px; border:1px solid #e2e8f0; display:inline-flex; align-items:center; justify-content:space-between; max-width:350px;">
-                    <span>${typeTag} ${e.reasonName} - <b>${e.duration}</b> 分鐘${rText}</span>
+                    <span style="word-break: break-all; white-space: normal;">${typeTag} ${e.reasonName} - <b>${e.duration}</b> 分鐘${rText}</span>
                     <button onclick="removeInlineDowntime(${idx})" style="background:#e53e3e; color:white; border:none; border-radius:3px; cursor:pointer; padding:2px 8px; margin-left:15px;"><i class="fas fa-times"></i></button>
                 </div>`;
             });
@@ -804,16 +779,7 @@
             
             if (totalDuration <= 0) return alert('停機時間必須大於 0 分鐘！');
             
-            // 加入並合併
-            const existingIdx = inlineDowntimeEvents.findIndex(e => e.reasonId === reasonId);
-            if (existingIdx !== -1) {
-                inlineDowntimeEvents[existingIdx].duration += totalDuration;
-                if (remark) {
-                    inlineDowntimeEvents[existingIdx].remark = inlineDowntimeEvents[existingIdx].remark ? inlineDowntimeEvents[existingIdx].remark + ', ' + remark : remark;
-                }
-            } else {
-                inlineDowntimeEvents.push({ reasonId, reasonName, duration: totalDuration, isPlanned: isPlanned, remark: remark });
-            }
+            inlineDowntimeEvents.push({ reasonId, reasonName, duration: totalDuration, isPlanned: isPlanned, remark: remark });
 
             select.value = ''; document.getElementById('editDtHour').value = '0'; document.getElementById('editDtMinute').value = '0'; document.getElementById('editDtRemark').value = '';
             document.getElementById('inlineDowntimeListContainer').innerHTML = generateInlineDowntimeListHTML();
@@ -851,7 +817,6 @@
             
             if (!startDate || !endDate) return alert('請選擇開始與結束日期！');
 
-            // ★ 撈取時加入 remark 欄位
             let query = db.from('production_records').select('*, machines(name), downtime_events(duration_minutes, remark, downtime_reasons(name, is_planned))').gte('record_date', startDate).lte('record_date', endDate).order('record_date', { ascending: true });
             if (lineName) query = query.eq('line_name', lineName); if (machineId) query = query.eq('machine_id', machineId);
 
@@ -938,7 +903,7 @@
                                 <td rowspan="${rKeys.length}">${actualAvailMin}</td>
                                 <td style="border-left: 1px solid #e2e8f0;">${rName} <br><span style="font-size:12px;${colorStyle}">[${typeStr}]</span></td>
                                 <td style="font-weight:bold; ${colorStyle}">${tInfo.duration}</td>
-                                <td><span style="font-size:13px; color:#718096;">${combinedRemarks || '-'}</span></td>
+                                <td style="word-break: break-all; max-width: 150px;"><span style="font-size:13px; color:#718096;">${combinedRemarks || '-'}</span></td>
                                 <td rowspan="${rKeys.length}" style="color:#e53e3e; font-weight:bold;">${recordUnplannedDowntime}</td>
                                 <td rowspan="${rKeys.length}">${recordOEE.toFixed(2)}%</td>
                             </tr>`;
@@ -946,7 +911,7 @@
                             detailHTML += `<tr>
                                 <td style="border-left: 1px solid #e2e8f0;">${rName} <br><span style="font-size:12px;${colorStyle}">[${typeStr}]</span></td>
                                 <td style="font-weight:bold; ${colorStyle}">${tInfo.duration}</td>
-                                <td><span style="font-size:13px; color:#718096;">${combinedRemarks || '-'}</span></td>
+                                <td style="word-break: break-all; max-width: 150px;"><span style="font-size:13px; color:#718096;">${combinedRemarks || '-'}</span></td>
                             </tr>`;
                         }
                     });
@@ -1033,13 +998,21 @@
             document.getElementById('page-title').innerText = title; 
             document.querySelectorAll('.nav-links a').forEach(l => l.classList.remove('active')); 
             document.getElementById('nav-' + pageId).classList.add('active'); 
-            if (window.innerWidth <= 768) document.getElementById('sidebar').style.display = 'none';
+            
+            const sidebar = document.getElementById('sidebar');
+            if (window.innerWidth <= 768) {
+                sidebar.style.setProperty('display', 'none', 'important');
+            }
         }
         
         function toggleSidebar() { 
             const sidebar = document.getElementById('sidebar'); 
             const isHidden = window.getComputedStyle(sidebar).display === 'none';
-            sidebar.style.display = isHidden ? 'flex' : 'none'; 
+            if (isHidden) {
+                sidebar.style.setProperty('display', 'flex', 'important');
+            } else {
+                sidebar.style.setProperty('display', 'none', 'important');
+            }
         }
     </script>
 </body>
