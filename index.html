@@ -150,7 +150,7 @@
                             <button onclick="addDowntimeToList()">加入停機</button>
                         </div>
                         <table class="data-table">
-                            <thead><tr><th>停機項目</th><th>分類</th><th>時間 (分鐘)</th><th>備註</th><th>操作</th></tr></thead>
+                            <thead><tr><th>停機項目</th><th>分類</th><th>時間 (分鐘)</th><th>操作</th></tr></thead>
                             <tbody id="downtimeTableBody"></tbody>
                         </table>
                         <div class="total-summary">此機台總停機： <span id="totalDowntimeDisplay">0</span> 分鐘</div>
@@ -588,7 +588,6 @@
             
             if (totalDuration <= 0) return alert('停機時間必須大於 0 分鐘！');
             
-            // ★ 修改：直接存入獨立項目，且加上 word-break 強制斷行預防版面跑掉
             currentDowntimeEvents.push({ reasonId, reasonName, duration: totalDuration, isPlanned: isPlanned, remark: remark });
 
             select.value = ''; document.getElementById('downtimeHour').value = '0'; document.getElementById('downtimeMinute').value = '0'; document.getElementById('downtimeRemark').value = '';
@@ -600,7 +599,7 @@
             currentDowntimeEvents.forEach((event, index) => { 
                 total += event.duration; 
                 const typeTag = event.isPlanned ? '<span style="color:#d69e2e;font-weight:bold;">[計畫]</span>' : '<span style="color:#e53e3e;font-weight:bold;">[非計畫]</span>';
-                // ★ 修改：加入 word-break 確保長字元強制換行
+                // ★ 新增：word-break 解決長備註撐破版面
                 tbody.innerHTML += `<tr><td>${event.reasonName}</td><td>${typeTag}</td><td>${event.duration}</td><td style="max-width: 150px; word-break: break-all; white-space: normal;">${event.remark || '-'}</td><td><button class="delete-btn" onclick="removeDowntimeFromList(${index})">移除</button></td></tr>`; 
             });
             document.getElementById('totalDowntimeDisplay').innerText = total;
@@ -702,7 +701,6 @@
                             totalDowntime += e.duration_minutes; 
                             const typeTag = e.downtime_reasons.is_planned ? '<span style="color:#d69e2e; font-weight:bold;">[計]</span>' : '<span style="color:#e53e3e; font-weight:bold;">[非]</span>';
                             const remarkText = e.remark ? ` <span style="color:#718096; font-size:12px; word-break: break-all;">(${e.remark})</span>` : '';
-                            // ★ 修改：加入 word-break 確保文字能斷行
                             dtHtml += `<div style="margin-bottom:2px; white-space: normal; word-break: break-all;">${typeTag} ${e.downtime_reasons.name}: <b style="color:#2d3748;">${e.duration_minutes}</b>分${remarkText}</div>`;
                         });
                     } else {
@@ -757,7 +755,6 @@
             inlineDowntimeEvents.forEach((e, idx) => {
                 const typeTag = e.isPlanned ? '<span style="color:#d69e2e;">[計]</span>' : '<span style="color:#e53e3e;">[非]</span>';
                 const rText = e.remark ? ` <i style="color:#718096; font-size:12px;">(${e.remark})</i>` : '';
-                // ★ 修改：加入 word-break 確保文字能斷行
                 html += `<div style="background:#f7fafc; padding:5px 10px; border-radius:4px; border:1px solid #e2e8f0; display:inline-flex; align-items:center; justify-content:space-between; max-width:350px;">
                     <span style="word-break: break-all; white-space: normal;">${typeTag} ${e.reasonName} - <b>${e.duration}</b> 分鐘${rText}</span>
                     <button onclick="removeInlineDowntime(${idx})" style="background:#e53e3e; color:white; border:none; border-radius:3px; cursor:pointer; padding:2px 8px; margin-left:15px;"><i class="fas fa-times"></i></button>
@@ -810,7 +807,7 @@
             loadRecordsByDate(); 
         }
 
-        // ================= ★ 統計與導出邏輯 ★ =================
+        // ================= ★ 統計與導出邏輯 (包含群組化相同停機與備註串接) ★ =================
         async function queryStatistics() {
             const startDate = document.getElementById('statStartDate').value; const endDate = document.getElementById('statEndDate').value; 
             const lineName = document.getElementById('statLine').value; const machineId = document.getElementById('statMachine').value;
@@ -821,9 +818,22 @@
             if (lineName) query = query.eq('line_name', lineName); if (machineId) query = query.eq('machine_id', machineId);
 
             const { data: records, error } = await query;
-            currentQueriedRecords = records || []; 
+            
+            // ★ 合併同日、同機台的多次報工紀錄
+            let mergedMap = {};
+            (records || []).forEach(r => {
+                let key = `${r.record_date}_${r.machine_id}`;
+                if (!mergedMap[key]) {
+                    mergedMap[key] = { ...r, downtime_events: r.downtime_events ? [...r.downtime_events] : [] };
+                } else {
+                    if (r.downtime_events) {
+                        mergedMap[key].downtime_events.push(...r.downtime_events);
+                    }
+                }
+            });
+            currentQueriedRecords = Object.values(mergedMap);
 
-            if (error || !records || records.length === 0) { 
+            if (error || currentQueriedRecords.length === 0) { 
                 alert(error ? '查詢失敗！' : '這段期間沒有符合條件的資料！'); 
                 document.getElementById('statOEE').innerText = '0.0%'; document.getElementById('statTotalDowntime').innerText = '0 分鐘'; 
                 document.getElementById('statSummaryBody').innerHTML = '<tr><td colspan="4" style="text-align:center;">無資料</td></tr>';
@@ -836,18 +846,18 @@
             const summarySelect = document.getElementById('summaryMachineFilter');
             summarySelect.innerHTML = '';
             const uniqueMachinesInQuery = {};
-            records.forEach(r => uniqueMachinesInQuery[r.machine_id] = r.machines.name);
+            currentQueriedRecords.forEach(r => uniqueMachinesInQuery[r.machine_id] = r.machines.name);
             for (const [id, name] of Object.entries(uniqueMachinesInQuery)) {
                 summarySelect.innerHTML += `<option value="${id}">${name}</option>`;
             }
 
             currentExportData = []; let detailHTML = '';
-            records.forEach(record => {
+            currentQueriedRecords.forEach(record => {
                 const plannedActualMin = calculateActualAvailMin(record.start_time, record.end_time, record.is_rolling_break);
                 
                 let recordPlannedDowntime = 0;
                 let recordUnplannedDowntime = 0; 
-                let recordReasonMap = {}; // 在統計區會進行加總合併
+                let recordReasonMap = {}; // 用於合併同機台當天的相同停機項目
                 
                 if (record.downtime_events) {
                     record.downtime_events.forEach(event => {
@@ -903,7 +913,7 @@
                                 <td rowspan="${rKeys.length}">${actualAvailMin}</td>
                                 <td style="border-left: 1px solid #e2e8f0;">${rName} <br><span style="font-size:12px;${colorStyle}">[${typeStr}]</span></td>
                                 <td style="font-weight:bold; ${colorStyle}">${tInfo.duration}</td>
-                                <td style="word-break: break-all; max-width: 150px;"><span style="font-size:13px; color:#718096;">${combinedRemarks || '-'}</span></td>
+                                <td style="word-break: break-all; max-width: 150px; white-space: normal;"><span style="font-size:13px; color:#718096;">${combinedRemarks || '-'}</span></td>
                                 <td rowspan="${rKeys.length}" style="color:#e53e3e; font-weight:bold;">${recordUnplannedDowntime}</td>
                                 <td rowspan="${rKeys.length}">${recordOEE.toFixed(2)}%</td>
                             </tr>`;
@@ -911,7 +921,7 @@
                             detailHTML += `<tr>
                                 <td style="border-left: 1px solid #e2e8f0;">${rName} <br><span style="font-size:12px;${colorStyle}">[${typeStr}]</span></td>
                                 <td style="font-weight:bold; ${colorStyle}">${tInfo.duration}</td>
-                                <td style="word-break: break-all; max-width: 150px;"><span style="font-size:13px; color:#718096;">${combinedRemarks || '-'}</span></td>
+                                <td style="word-break: break-all; max-width: 150px; white-space: normal;"><span style="font-size:13px; color:#718096;">${combinedRemarks || '-'}</span></td>
                             </tr>`;
                         }
                     });
