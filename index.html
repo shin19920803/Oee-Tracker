@@ -142,12 +142,13 @@
 
                     <div style="background-color: #f7fafc; padding: 15px; border-radius: 8px; margin-top: 15px;">
                         <h3 style="margin-top: 0; font-size: 1rem;">機台停機輸入</h3>
-                        <div class="input-group">
+                        <div class="input-group" style="flex-wrap: wrap;">
                             <select id="downtimeReasonSelect" style="flex: 2; min-width: 120px;"><option value="">請選擇停機項目</option></select>
                             <select id="downtimeHour" style="flex: 1;"></select>
                             <select id="downtimeMinute" style="flex: 1;"></select>
-                            <input type="text" id="downtimeRemark" placeholder="備註原因(選填)" style="flex: 2;">
-                            <button onclick="addDowntimeToList()">加入停機</button>
+                            <input type="text" id="downtimeRemark" placeholder="備註原因(選填)" style="flex: 2; min-width: 120px;">
+                            <button onclick="addDowntimeToList()" style="background-color: #3182ce;">加入單機</button>
+                            <button onclick="addDowntimeToWholeLine()" style="background-color: #ed8936;"><i class="fas fa-bolt"></i> 全線加入</button>
                         </div>
                         <table class="data-table">
                             <thead><tr><th>停機項目</th><th>分類</th><th>時間 (分鐘)</th><th>備註</th><th>操作</th></tr></thead>
@@ -236,9 +237,9 @@
                                     <th>可用時間(分)</th>
                                     <th>停機項目</th>
                                     <th>該項停機(分)</th>
+                                    <th>備註</th>
                                     <th>非計畫總停機</th>
                                     <th>稼動率</th>
-                                    <th>備註</th>
                                 </tr>
                             </thead>
                             <tbody id="statDetailBody">
@@ -326,7 +327,7 @@
         let loadedDailyRecords = [];
         let downtimeChartInstance = null;
         let currentExportData = [];
-        let simpleExportData = []; // ★ 新增：用於產生「每日稼動率」簡易分頁的資料
+        let simpleExportData = [];
         let allMachines = []; 
         let allLines = [];
         let currentQueriedRecords = []; 
@@ -363,6 +364,8 @@
             select.innerHTML = '<option value="">請選擇人員</option>';
             
             if(data) {
+                // ★ 加入自動排序
+                data.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
                 data.forEach(op => {
                     list.innerHTML += `<li>${op.name} <div class="btn-group"><button class="edit-btn" onclick="editOperator('${op.id}', '${op.name}')">編輯</button><button class="delete-btn" onclick="deleteOperator('${op.id}')">刪除</button></div></li>`;
                     select.innerHTML += `<option value="${op.name}">${op.name}</option>`;
@@ -473,8 +476,10 @@
 
         // ================= 線別與機台連動 =================
         async function fetchLines() {
-            const { data } = await db.from('lines').select('*').order('created_at', { ascending: true });
+            const { data } = await db.from('lines').select('*');
             allLines = data || [];
+            // ★ 加入自動排序
+            allLines.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
             
             const recordSelect = document.getElementById('recordLine'); const settingLineSelect = document.getElementById('settingLineSelect'); const statLineSelect = document.getElementById('statLine'); 
             const currentRecordVal = recordSelect.value; const currentSettingVal = settingLineSelect.value; const currentStatLineVal = statLineSelect.value;
@@ -528,7 +533,13 @@
         async function editSelectedLine() { const select = document.getElementById('settingLineSelect'); const id = select.value; if (!id) return alert('請先選擇線別'); const oldName = select.options[select.selectedIndex].text; const newName = prompt('新線別名稱：', oldName); if (newName && newName.trim() !== oldName) { await db.from('lines').update({ name: newName.trim() }).eq('id', id); fetchLines(); fetchMachines(); } }
         async function deleteSelectedLine() { const select = document.getElementById('settingLineSelect'); const id = select.value; if (!id) return alert('請先選擇線別'); if (confirm('警告：確定刪除此線別嗎？\n該線別下綁定的「所有機台」也會受影響！')) { await db.from('lines').delete().eq('id', id); fetchLines(); fetchMachines(); } }
         async function addNewMachineToLine() { const lineId = document.getElementById('settingLineSelect').value; if (!lineId) return alert('請先在上方選擇線別！'); const name = document.getElementById('newMachineName').value.trim(); if (!name) return alert('請輸入機台名稱！'); await db.from('machines').insert([{ name: name, line_id: lineId }]); document.getElementById('newMachineName').value = ''; await fetchMachines(); }
-        async function fetchMachines() { const { data } = await db.from('machines').select('*, lines(name)').order('created_at', { ascending: true }); allMachines = data || []; renderSettingMachineList(); updateRecordMachineDropdown(); onStatLineChange(); }
+        async function fetchMachines() { 
+            const { data } = await db.from('machines').select('*, lines(name)'); 
+            allMachines = data || []; 
+            // ★ 加入自動排序
+            allMachines.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
+            renderSettingMachineList(); updateRecordMachineDropdown(); onStatLineChange(); 
+        }
         async function editMachine(id, oldName) { const newName = prompt('新機台名稱：', oldName); if (newName && newName.trim() !== oldName) { await db.from('machines').update({ name: newName.trim() }).eq('id', id); fetchMachines(); } }
         async function deleteMachine(id) { if (confirm('確定刪除這個機台嗎？')) { await db.from('machines').delete().eq('id', id); fetchMachines(); } }
 
@@ -550,10 +561,13 @@
         }
 
         async function fetchReasons() {
-            const { data } = await db.from('downtime_reasons').select('id, name, is_planned').order('created_at', { ascending: true });
+            const { data } = await db.from('downtime_reasons').select('id, name, is_planned');
             const plannedList = document.getElementById('plannedReasonList'); const unplannedList = document.getElementById('unplannedReasonList'); const select = document.getElementById('downtimeReasonSelect');
             plannedList.innerHTML = ''; unplannedList.innerHTML = ''; select.innerHTML = '<option value="">請選擇停機項目</option>';
             if(!data) return;
+
+            // ★ 加入自動排序
+            data.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
 
             let optgroupPlanned = '<optgroup label="=== 計畫性停機 (扣除總可用時間) ===">';
             let optgroupUnplanned = '<optgroup label="=== 非計畫性停機 (扣除稼動率) ===">';
@@ -651,14 +665,106 @@
             }
             alert('機台紀錄儲存成功！你可以繼續輸入下一台機台。');
             document.getElementById('recordMachine').value = ''; 
+            document.getElementById('downtimeRemark').value = ''; 
             currentDowntimeEvents = []; renderDowntimeTable(); loadRecordsByDate();
+        }
+
+        // ★ 新增：全線套用邏輯
+        async function addDowntimeToWholeLine() {
+            const date = document.getElementById('recordDate').value;
+            const line = document.getElementById('recordLine').value;
+            const startTime = getSelectedTime('startHour', 'startMinute');
+            const endTime = getSelectedTime('endHour', 'endMinute');
+            const isRollingBreak = document.getElementById('isRollingBreak').checked;
+            const operatorName = document.getElementById('recordOperator').value;
+
+            if (!date || !line || !startTime || !endTime || !operatorName) {
+                return alert('請完整填寫上方共用資料(日期/線別/開線/結束/登記人)！\n(全線套用不需要選擇機台名稱)');
+            }
+
+            const select = document.getElementById('downtimeReasonSelect');
+            const reasonId = select.value; 
+            if (!reasonId) return alert('請選擇停機項目！');
+            
+            const reasonName = select.options[select.selectedIndex].text;
+            const hours = parseInt(document.getElementById('downtimeHour').value); 
+            const minutes = parseInt(document.getElementById('downtimeMinute').value);
+            const totalDuration = (hours * 60) + minutes;
+            const remark = document.getElementById('downtimeRemark').value.trim(); 
+            
+            if (totalDuration <= 0) return alert('停機時間必須大於 0 分鐘！');
+
+            if (!confirm(`確定要將「${reasonName} - ${totalDuration}分鐘」套用到【${line}】的所有機台嗎？\n(將立即寫入資料庫！)`)) return;
+
+            const lineMachines = allMachines.filter(m => m.lines && m.lines.name === line);
+            if (lineMachines.length === 0) return alert('此線別目前沒有綁定任何機台，請先至基礎設定新增！');
+
+            // 檢查本日此線已建立的機台紀錄
+            const { data: existingRecords, error: fetchErr } = await db.from('production_records')
+                .select('id, machine_id')
+                .eq('record_date', date)
+                .eq('line_name', line);
+
+            if (fetchErr) return alert('檢查現有紀錄失敗: ' + fetchErr.message);
+
+            let newRecordIdsMap = {};
+
+            // 1. 若該機台本日無紀錄，先幫它建立
+            const machinesWithoutRecord = lineMachines.filter(m => !existingRecords.find(r => r.machine_id === m.id));
+            if (machinesWithoutRecord.length > 0) {
+                const recordsToInsert = machinesWithoutRecord.map(m => ({
+                    record_date: date,
+                    line_name: line,
+                    machine_id: m.id,
+                    start_time: startTime,
+                    end_time: endTime,
+                    early_end_time: null,
+                    is_rolling_break: isRollingBreak,
+                    operator_name: operatorName
+                }));
+                const { data: insertedRecords, error: insertErr } = await db.from('production_records').insert(recordsToInsert).select();
+                if (insertErr) return alert('建立機台主紀錄失敗: ' + insertErr.message);
+                insertedRecords.forEach(r => newRecordIdsMap[r.machine_id] = r.id);
+            }
+
+            // 2. 將停機明細綁定到每個機台對應的 record_id
+            let eventsToInsert = [];
+            lineMachines.forEach(m => {
+                let recordId = newRecordIdsMap[m.id];
+                if (!recordId) {
+                    const ext = existingRecords.find(r => r.machine_id === m.id);
+                    if (ext) recordId = ext.id;
+                }
+                if (recordId) {
+                    eventsToInsert.push({
+                        record_id: recordId,
+                        reason_id: reasonId,
+                        duration_minutes: totalDuration,
+                        remark: remark || null
+                    });
+                }
+            });
+
+            if (eventsToInsert.length > 0) {
+                const { error: dtErr } = await db.from('downtime_events').insert(eventsToInsert);
+                if (dtErr) return alert('寫入停機明細失敗: ' + dtErr.message);
+            }
+
+            alert(`已成功將停機套用至全線 ${lineMachines.length} 台機台！`);
+            
+            select.value = ''; document.getElementById('downtimeHour').value = '0'; document.getElementById('downtimeMinute').value = '0'; document.getElementById('downtimeRemark').value = '';
+            loadRecordsByDate();
         }
 
         // ================= 每日報工表格展開編輯邏輯 =================
         async function loadRecordsByDate() {
             const date = document.getElementById('recordDate').value; if (!date) return;
-            const { data, error } = await db.from('production_records').select('*, machines(name), downtime_events(id, duration_minutes, remark, downtime_reasons(id, name, is_planned))').eq('record_date', date).order('created_at', { ascending: false });
+            const { data, error } = await db.from('production_records').select('*, machines(name), downtime_events(id, duration_minutes, remark, downtime_reasons(id, name, is_planned))').eq('record_date', date);
             loadedDailyRecords = data || []; 
+            
+            // ★ 加入自動排序 (依照機台名稱)
+            loadedDailyRecords.sort((a, b) => (a.machines?.name || '').localeCompare(b.machines?.name || '', 'zh-TW'));
+            
             inlineEditingId = null; 
             renderDailyHistoryTable();
         }
@@ -843,14 +949,14 @@
             loadRecordsByDate(); 
         }
 
-        // ================= ★ 統計與導出邏輯 (支援雙分頁匯出) ★ =================
+        // ================= ★ 統計與導出邏輯 (包含群組化排序) ★ =================
         async function queryStatistics() {
             const startDate = document.getElementById('statStartDate').value; const endDate = document.getElementById('statEndDate').value; 
             const lineName = document.getElementById('statLine').value; const machineId = document.getElementById('statMachine').value;
             
             if (!startDate || !endDate) return alert('請選擇開始與結束日期！');
 
-            let query = db.from('production_records').select('*, machines(name), downtime_events(duration_minutes, remark, downtime_reasons(name, is_planned))').gte('record_date', startDate).lte('record_date', endDate).order('record_date', { ascending: true });
+            let query = db.from('production_records').select('*, machines(name), downtime_events(duration_minutes, remark, downtime_reasons(name, is_planned))').gte('record_date', startDate).lte('record_date', endDate);
             if (lineName) query = query.eq('line_name', lineName); if (machineId) query = query.eq('machine_id', machineId);
 
             const { data: records, error } = await query;
@@ -867,6 +973,14 @@
                 }
             });
             currentQueriedRecords = Object.values(mergedMap);
+            
+            // ★ 統計資料自動排序 (日期 -> 機器名稱)
+            currentQueriedRecords.sort((a, b) => {
+                if (a.record_date === b.record_date) {
+                    return (a.machines?.name || '').localeCompare(b.machines?.name || '', 'zh-TW');
+                }
+                return a.record_date.localeCompare(b.record_date);
+            });
 
             if (error || currentQueriedRecords.length === 0) { 
                 alert(error ? '查詢失敗！' : '這段期間沒有符合條件的資料！'); 
@@ -882,12 +996,15 @@
             summarySelect.innerHTML = '';
             const uniqueMachinesInQuery = {};
             currentQueriedRecords.forEach(r => uniqueMachinesInQuery[r.machine_id] = r.machines.name);
-            for (const [id, name] of Object.entries(uniqueMachinesInQuery)) {
+            
+            // ★ 下拉選單機台名稱自動排序
+            const sortedMachineEntries = Object.entries(uniqueMachinesInQuery).sort((a, b) => a[1].localeCompare(b[1], 'zh-TW'));
+            for (const [id, name] of sortedMachineEntries) {
                 summarySelect.innerHTML += `<option value="${id}">${name}</option>`;
             }
 
             currentExportData = []; 
-            simpleExportData = []; // ★ 清空供第一頁用的精簡陣列
+            simpleExportData = []; 
             let detailHTML = '';
             
             currentQueriedRecords.forEach(record => {
@@ -918,14 +1035,14 @@
                 const actualAvailMin = plannedActualMin - recordPlannedDowntime; 
                 let recordOEE = actualAvailMin > 0 ? ((actualAvailMin - recordUnplannedDowntime) / actualAvailMin) * 100 : 0;
                 
-                // ★ 加入簡單版的每日稼動率明細 (供 Sheet 1 使用)
                 simpleExportData.push({
                     "日期": record.record_date,
                     "機台": record.machines.name,
                     "稼動率": recordOEE.toFixed(2) + '%'
                 });
 
-                const rKeys = Object.keys(recordReasonMap);
+                // 將物件的 keys 排序
+                const rKeys = Object.keys(recordReasonMap).sort((a, b) => a.localeCompare(b, 'zh-TW'));
                 
                 if (rKeys.length === 0) {
                     currentExportData.push({ 
@@ -933,7 +1050,7 @@
                         "開線時間": record.start_time, "結束時間": record.end_time,
                         "有輪休": record.is_rolling_break ? '是' : '否', "計畫性停機扣除(分)": recordPlannedDowntime, "實際可用時間(分)": actualAvailMin, 
                         "停機項目": "無", "屬性": "-", "該項停機(分)": 0, "非計畫總停機(損失分)": 0, "稼動率(%)": recordOEE.toFixed(2) + '%', 
-                        "備註": "-" // ★ 備註已移至最後
+                        "備註": "-" 
                     });
                     detailHTML += `<tr><td>${record.record_date}</td><td>${record.line_name}</td><td>${record.machines.name}</td><td>${actualAvailMin}</td><td>無</td><td>-</td><td>-</td><td style="color:#e53e3e; font-weight:bold;">0</td><td>${recordOEE.toFixed(2)}%</td></tr>`;
                 } else {
@@ -947,7 +1064,7 @@
                             "開線時間": record.start_time, "結束時間": record.end_time,
                             "有輪休": record.is_rolling_break ? '是' : '否', "計畫性停機扣除(分)": recordPlannedDowntime, "實際可用時間(分)": actualAvailMin, 
                             "停機項目": rName, "屬性": typeStr, "該項停機(分)": tInfo.duration, "非計畫總停機(損失分)": recordUnplannedDowntime, "稼動率(%)": recordOEE.toFixed(2) + '%', 
-                            "備註": combinedRemarks || '-' // ★ 備註已移至最後
+                            "備註": combinedRemarks || '-' 
                         });
 
                         const colorStyle = tInfo.isPlanned ? 'color:#d69e2e;' : 'color:#e53e3e;';
@@ -1052,17 +1169,13 @@
             }
         }
 
-        // ★ 修改：同時匯出兩個分頁
         function exportToExcel() { 
             if (currentExportData.length === 0) return alert('請先查詢資料！'); 
             
             const wb = XLSX.utils.book_new(); 
-            
-            // 建立第一個分頁：每日稼動率
             const ws1 = XLSX.utils.json_to_sheet(simpleExportData);
             XLSX.utils.book_append_sheet(wb, ws1, "每日稼動率");
 
-            // 建立第二個分頁：停機明細
             const ws2 = XLSX.utils.json_to_sheet(currentExportData); 
             XLSX.utils.book_append_sheet(wb, ws2, "停機明細"); 
             
@@ -1075,13 +1188,20 @@
             document.getElementById('page-title').innerText = title; 
             document.querySelectorAll('.nav-links a').forEach(l => l.classList.remove('active')); 
             document.getElementById('nav-' + pageId).classList.add('active'); 
-            if (window.innerWidth <= 768) document.getElementById('sidebar').style.display = 'none';
+            
+            const sidebar = document.getElementById('sidebar');
+            if (window.innerWidth <= 768) {
+                sidebar.style.display = 'none';
+            }
         }
         
         function toggleSidebar() { 
             const sidebar = document.getElementById('sidebar'); 
-            const isHidden = window.getComputedStyle(sidebar).display === 'none';
-            sidebar.style.display = isHidden ? 'flex' : 'none'; 
+            if (sidebar.style.display === 'none' || sidebar.style.display === '') {
+                sidebar.style.display = 'flex';
+            } else {
+                sidebar.style.display = 'none';
+            }
         }
     </script>
 </body>
