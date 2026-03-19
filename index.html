@@ -143,7 +143,6 @@
                     <div class="form-grid">
                         <div><label>機台名稱</label><select id="recordMachine"><option value="">請先選擇上方線別</option></select></div>
                         <div><label>登記人</label><select id="recordOperator"><option value="">請先至基礎設定新增</option></select></div>
-                        <div style="grid-column: 1 / -1;"><label>備註原因 (選填)</label><input type="text" id="recordRemark" placeholder="若有特殊情況可在此說明..."></div>
                     </div>
 
                     <div style="background-color: #f7fafc; padding: 15px; border-radius: 8px; margin-top: 15px;">
@@ -591,7 +590,6 @@
         async function editReason(id, oldName) { const newName = prompt('新停機項目名稱：', oldName); if (newName) { await db.from('downtime_reasons').update({ name: newName.trim() }).eq('id', id); fetchReasons(); } }
         async function deleteReason(id) { if (confirm('確定刪除？')) { await db.from('downtime_reasons').delete().eq('id', id); fetchReasons(); } }
 
-        // ================= ★ 新增功能：同步更新線別時間與輪休 ★ =================
         async function updateLineTime() {
             const date = document.getElementById('recordDate').value; 
             const line = document.getElementById('recordLine').value;
@@ -626,7 +624,7 @@
             }
 
             alert(`已成功更新 ${data.length} 筆機台紀錄！`);
-            loadRecordsByDate(); // 重新載入下方列表
+            loadRecordsByDate(); 
         }
 
         // ================= 每日報工儲存 =================
@@ -929,7 +927,7 @@
             inlineDowntimeEvents.forEach((e, idx) => {
                 const typeTag = e.isPlanned ? '<span style="color:#d69e2e;">[計]</span>' : '<span style="color:#e53e3e;">[非]</span>';
                 const rText = e.remark ? ` <i style="color:#718096; font-size:12px;">(${e.remark})</i>` : '';
-                html += `<div style="background:#f7fafc; padding:5px 10px; border-radius:4px; border:1px solid #e2e8f0; display:flex; align-items:center; justify-content:space-between; max-width:450px; margin-bottom:5px;">
+                html += `<div style="background:#f7fafc; padding:5px 10px; border-radius:4px; border:1px solid #e2e8f0; display:inline-flex; align-items:center; justify-content:space-between; max-width:450px; margin-bottom:5px;">
                     <span style="word-break: break-all; white-space: normal; padding-right:10px;">${typeTag} ${e.reasonName} - <b>${e.duration}</b> 分鐘${rText}</span>
                     <div style="display:flex; gap:5px; flex-shrink:0;">
                         <button onclick="editInlineDowntime(${idx})" style="background:#48bb78; color:white; border:none; border-radius:3px; cursor:pointer; padding:4px 8px;" title="載入編輯"><i class="fas fa-edit"></i></button>
@@ -984,14 +982,14 @@
             loadRecordsByDate(); 
         }
 
-        // ================= ★ 統計與導出邏輯 ★ =================
+        // ================= ★ 統計與導出邏輯 (加入實際生產時間) ★ =================
         async function queryStatistics() {
             const startDate = document.getElementById('statStartDate').value; const endDate = document.getElementById('statEndDate').value; 
             const lineName = document.getElementById('statLine').value; const machineId = document.getElementById('statMachine').value;
             
             if (!startDate || !endDate) return alert('請選擇開始與結束日期！');
 
-            let query = db.from('production_records').select('*, machines(name), downtime_events(duration_minutes, remark, downtime_reasons(name, is_planned))').gte('record_date', startDate).lte('record_date', endDate);
+            let query = db.from('production_records').select('*, machines(name), downtime_events(duration_minutes, remark, downtime_reasons(name, is_planned))').gte('record_date', startDate).lte('record_date', endDate).order('record_date', { ascending: true });
             if (lineName) query = query.eq('line_name', lineName); if (machineId) query = query.eq('machine_id', machineId);
 
             const { data: records, error } = await query;
@@ -1068,6 +1066,9 @@
                 const actualAvailMin = plannedActualMin - recordPlannedDowntime; 
                 let recordOEE = actualAvailMin > 0 ? ((actualAvailMin - recordUnplannedDowntime) / actualAvailMin) * 100 : 0;
                 
+                // ★ 實際生產時間 = 實際可用時間 - 非計畫停機
+                const actualProductionTime = actualAvailMin - recordUnplannedDowntime;
+
                 simpleExportData.push({
                     "日期": record.record_date,
                     "機台": record.machines.name,
@@ -1076,12 +1077,24 @@
 
                 const rKeys = Object.keys(recordReasonMap).sort((a, b) => a.localeCompare(b, 'zh-TW'));
                 
+                // ★ 修改：配合要求的 EXCEL 欄位順序與內容
                 if (rKeys.length === 0) {
                     currentExportData.push({ 
-                        "日期": record.record_date, "線別": record.line_name, "機台": record.machines.name, "登記人": record.operator_name || '-',
-                        "開線時間": record.start_time, "結束時間": record.end_time,
-                        "有輪休": record.is_rolling_break ? '是' : '否', "計畫性停機扣除(分)": recordPlannedDowntime, "實際可用時間(分)": actualAvailMin, 
-                        "停機項目": "無", "屬性": "-", "該項停機(分)": 0, "非計畫總停機(損失分)": 0, "稼動率(%)": recordOEE.toFixed(2) + '%', 
+                        "日期": record.record_date, 
+                        "線別": record.line_name, 
+                        "機台": record.machines.name, 
+                        "登記人": record.operator_name || '-',
+                        "開線時間": record.start_time, 
+                        "結束時間": record.end_time,
+                        "有輪休": record.is_rolling_break ? '是' : '否', 
+                        "實際可用時間(分)": actualAvailMin, 
+                        "停機項目": "無", 
+                        "屬性": "-", 
+                        "該項停機(分)": 0, 
+                        "計畫性停機扣除(分)": recordPlannedDowntime, 
+                        "非計畫總停機(損失分)": 0, 
+                        "實際生產時間": actualProductionTime,
+                        "稼動率(%)": recordOEE.toFixed(2) + '%', 
                         "備註": "-" 
                     });
                     detailHTML += `<tr><td>${record.record_date}</td><td>${record.line_name}</td><td>${record.machines.name}</td><td>${actualAvailMin}</td><td>無</td><td>-</td><td>-</td><td style="color:#e53e3e; font-weight:bold;">0</td><td>${recordOEE.toFixed(2)}%</td></tr>`;
@@ -1092,10 +1105,21 @@
                         const combinedRemarks = tInfo.remarks.join(', ');
                         
                         currentExportData.push({ 
-                            "日期": record.record_date, "線別": record.line_name, "機台": record.machines.name, "登記人": record.operator_name || '-',
-                            "開線時間": record.start_time, "結束時間": record.end_time,
-                            "有輪休": record.is_rolling_break ? '是' : '否', "計畫性停機扣除(分)": recordPlannedDowntime, "實際可用時間(分)": actualAvailMin, 
-                            "停機項目": rName, "屬性": typeStr, "該項停機(分)": tInfo.duration, "非計畫總停機(損失分)": recordUnplannedDowntime, "稼動率(%)": recordOEE.toFixed(2) + '%', 
+                            "日期": record.record_date, 
+                            "線別": record.line_name, 
+                            "機台": record.machines.name, 
+                            "登記人": record.operator_name || '-',
+                            "開線時間": record.start_time, 
+                            "結束時間": record.end_time,
+                            "有輪休": record.is_rolling_break ? '是' : '否', 
+                            "實際可用時間(分)": actualAvailMin, 
+                            "停機項目": rName, 
+                            "屬性": typeStr, 
+                            "該項停機(分)": tInfo.duration, 
+                            "計畫性停機扣除(分)": recordPlannedDowntime, 
+                            "非計畫總停機(損失分)": recordUnplannedDowntime, 
+                            "實際生產時間": actualProductionTime,
+                            "稼動率(%)": recordOEE.toFixed(2) + '%', 
                             "備註": combinedRemarks || '-' 
                         });
 
@@ -1229,11 +1253,8 @@
         
         function toggleSidebar() { 
             const sidebar = document.getElementById('sidebar'); 
-            if (sidebar.style.display === 'none' || sidebar.style.display === '') {
-                sidebar.style.display = 'flex';
-            } else {
-                sidebar.style.display = 'none';
-            }
+            const isHidden = window.getComputedStyle(sidebar).display === 'none';
+            sidebar.style.display = isHidden ? 'flex' : 'none'; 
         }
     </script>
 </body>
