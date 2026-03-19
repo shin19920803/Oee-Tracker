@@ -126,10 +126,15 @@
                             <label>結束時間 (24H)</label>
                             <div class="time-picker"><select id="endHour"></select><span>:</span><select id="endMinute"></select></div>
                         </div>
-                        <div class="checkbox-container" style="grid-column: 1 / -1;">
-                            <input type="checkbox" id="isRollingBreak">
-                            <label for="isRollingBreak">是否輪休 (預設不打勾：代表 12:00-13:00 停機，扣除休息時間)</label>
+                        
+                        <div style="grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; border-top: 1px dashed #cbd5e0; padding-top: 15px; margin-top: 5px;">
+                            <div class="checkbox-container">
+                                <input type="checkbox" id="isRollingBreak">
+                                <label for="isRollingBreak">是否輪休 (預設不打勾：代表 12:00-13:00 停機，扣除休息時間)</label>
+                            </div>
+                            <button onclick="updateLineTime()" style="background-color: #319795; padding: 8px 15px;"><i class="fas fa-sync-alt"></i> 同步更新下方已輸入紀錄的時間與輪休</button>
                         </div>
+
                     </div>
                 </div>
 
@@ -138,6 +143,7 @@
                     <div class="form-grid">
                         <div><label>機台名稱</label><select id="recordMachine"><option value="">請先選擇上方線別</option></select></div>
                         <div><label>登記人</label><select id="recordOperator"><option value="">請先至基礎設定新增</option></select></div>
+                        <div style="grid-column: 1 / -1;"><label>備註原因 (選填)</label><input type="text" id="recordRemark" placeholder="若有特殊情況可在此說明..."></div>
                     </div>
 
                     <div style="background-color: #f7fafc; padding: 15px; border-radius: 8px; margin-top: 15px;">
@@ -364,7 +370,6 @@
             select.innerHTML = '<option value="">請選擇人員</option>';
             
             if(data) {
-                // ★ 加入自動排序
                 data.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
                 data.forEach(op => {
                     list.innerHTML += `<li>${op.name} <div class="btn-group"><button class="edit-btn" onclick="editOperator('${op.id}', '${op.name}')">編輯</button><button class="delete-btn" onclick="deleteOperator('${op.id}')">刪除</button></div></li>`;
@@ -478,7 +483,6 @@
         async function fetchLines() {
             const { data } = await db.from('lines').select('*');
             allLines = data || [];
-            // ★ 加入自動排序
             allLines.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
             
             const recordSelect = document.getElementById('recordLine'); const settingLineSelect = document.getElementById('settingLineSelect'); const statLineSelect = document.getElementById('statLine'); 
@@ -536,7 +540,6 @@
         async function fetchMachines() { 
             const { data } = await db.from('machines').select('*, lines(name)'); 
             allMachines = data || []; 
-            // ★ 加入自動排序
             allMachines.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
             renderSettingMachineList(); updateRecordMachineDropdown(); onStatLineChange(); 
         }
@@ -566,7 +569,6 @@
             plannedList.innerHTML = ''; unplannedList.innerHTML = ''; select.innerHTML = '<option value="">請選擇停機項目</option>';
             if(!data) return;
 
-            // ★ 加入自動排序
             data.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
 
             let optgroupPlanned = '<optgroup label="=== 計畫性停機 (扣除總可用時間) ===">';
@@ -588,6 +590,44 @@
         }
         async function editReason(id, oldName) { const newName = prompt('新停機項目名稱：', oldName); if (newName) { await db.from('downtime_reasons').update({ name: newName.trim() }).eq('id', id); fetchReasons(); } }
         async function deleteReason(id) { if (confirm('確定刪除？')) { await db.from('downtime_reasons').delete().eq('id', id); fetchReasons(); } }
+
+        // ================= ★ 新增功能：同步更新線別時間與輪休 ★ =================
+        async function updateLineTime() {
+            const date = document.getElementById('recordDate').value; 
+            const line = document.getElementById('recordLine').value;
+            const startTime = getSelectedTime('startHour', 'startMinute'); 
+            const endTime = getSelectedTime('endHour', 'endMinute'); 
+            const isRollingBreak = document.getElementById('isRollingBreak').checked;
+
+            if (!date || !line || !startTime || !endTime) {
+                return alert('請完整填寫日期、線別、開線與結束時間！');
+            }
+
+            const confirmMsg = `確定要將【${date}】${line} 所有已輸入的機台紀錄，\n時間統一更新為 ${startTime} ~ ${endTime}，\n輪休狀態更新為：${isRollingBreak ? '是' : '否'} 嗎？`;
+            
+            if (!confirm(confirmMsg)) return;
+
+            const { data, error } = await db.from('production_records')
+                .update({ 
+                    start_time: startTime, 
+                    end_time: endTime, 
+                    is_rolling_break: isRollingBreak 
+                })
+                .eq('record_date', date)
+                .eq('line_name', line)
+                .select(); 
+
+            if (error) {
+                return alert('更新失敗：' + error.message);
+            }
+
+            if (data && data.length === 0) {
+                return alert('這天此線別尚無任何紀錄，無需更新！');
+            }
+
+            alert(`已成功更新 ${data.length} 筆機台紀錄！`);
+            loadRecordsByDate(); // 重新載入下方列表
+        }
 
         // ================= 每日報工儲存 =================
         function addDowntimeToList() {
@@ -669,7 +709,6 @@
             currentDowntimeEvents = []; renderDowntimeTable(); loadRecordsByDate();
         }
 
-        // ★ 新增：全線套用邏輯
         async function addDowntimeToWholeLine() {
             const date = document.getElementById('recordDate').value;
             const line = document.getElementById('recordLine').value;
@@ -699,7 +738,6 @@
             const lineMachines = allMachines.filter(m => m.lines && m.lines.name === line);
             if (lineMachines.length === 0) return alert('此線別目前沒有綁定任何機台，請先至基礎設定新增！');
 
-            // 檢查本日此線已建立的機台紀錄
             const { data: existingRecords, error: fetchErr } = await db.from('production_records')
                 .select('id, machine_id')
                 .eq('record_date', date)
@@ -709,7 +747,6 @@
 
             let newRecordIdsMap = {};
 
-            // 1. 若該機台本日無紀錄，先幫它建立
             const machinesWithoutRecord = lineMachines.filter(m => !existingRecords.find(r => r.machine_id === m.id));
             if (machinesWithoutRecord.length > 0) {
                 const recordsToInsert = machinesWithoutRecord.map(m => ({
@@ -727,7 +764,6 @@
                 insertedRecords.forEach(r => newRecordIdsMap[r.machine_id] = r.id);
             }
 
-            // 2. 將停機明細綁定到每個機台對應的 record_id
             let eventsToInsert = [];
             lineMachines.forEach(m => {
                 let recordId = newRecordIdsMap[m.id];
@@ -762,7 +798,6 @@
             const { data, error } = await db.from('production_records').select('*, machines(name), downtime_events(id, duration_minutes, remark, downtime_reasons(id, name, is_planned))').eq('record_date', date);
             loadedDailyRecords = data || []; 
             
-            // ★ 加入自動排序 (依照機台名稱)
             loadedDailyRecords.sort((a, b) => (a.machines?.name || '').localeCompare(b.machines?.name || '', 'zh-TW'));
             
             inlineEditingId = null; 
@@ -949,7 +984,7 @@
             loadRecordsByDate(); 
         }
 
-        // ================= ★ 統計與導出邏輯 (包含群組化排序) ★ =================
+        // ================= ★ 統計與導出邏輯 ★ =================
         async function queryStatistics() {
             const startDate = document.getElementById('statStartDate').value; const endDate = document.getElementById('statEndDate').value; 
             const lineName = document.getElementById('statLine').value; const machineId = document.getElementById('statMachine').value;
@@ -974,7 +1009,6 @@
             });
             currentQueriedRecords = Object.values(mergedMap);
             
-            // ★ 統計資料自動排序 (日期 -> 機器名稱)
             currentQueriedRecords.sort((a, b) => {
                 if (a.record_date === b.record_date) {
                     return (a.machines?.name || '').localeCompare(b.machines?.name || '', 'zh-TW');
@@ -997,7 +1031,6 @@
             const uniqueMachinesInQuery = {};
             currentQueriedRecords.forEach(r => uniqueMachinesInQuery[r.machine_id] = r.machines.name);
             
-            // ★ 下拉選單機台名稱自動排序
             const sortedMachineEntries = Object.entries(uniqueMachinesInQuery).sort((a, b) => a[1].localeCompare(b[1], 'zh-TW'));
             for (const [id, name] of sortedMachineEntries) {
                 summarySelect.innerHTML += `<option value="${id}">${name}</option>`;
@@ -1041,7 +1074,6 @@
                     "稼動率": recordOEE.toFixed(2) + '%'
                 });
 
-                // 將物件的 keys 排序
                 const rKeys = Object.keys(recordReasonMap).sort((a, b) => a.localeCompare(b, 'zh-TW'));
                 
                 if (rKeys.length === 0) {
