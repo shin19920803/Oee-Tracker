@@ -74,7 +74,6 @@
         optgroup { font-weight: bold; color: #2c3e50; }
 
         @media (max-width: 768px) {
-            #sidebar { position: absolute; z-index: 9999; height: 100%; box-shadow: 2px 0 10px rgba(0,0,0,0.5); display: none; }
             .form-grid { grid-template-columns: 1fr !important; gap: 10px; }
             .stat-cards { grid-template-columns: 1fr !important; }
             .input-group { flex-direction: column; align-items: stretch; }
@@ -85,7 +84,6 @@
             .section { padding: 15px; }
             .chart-container { height: 280px; padding: 10px; }
         }
-        @media (min-width: 769px) { #sidebar { display: flex !important; position: relative; } }
     </style>
 </head>
 <body>
@@ -103,7 +101,6 @@
 
     <div id="main-content">
         <header>
-            <button id="menu-toggle" onclick="toggleSidebar()"><i class="fas fa-bars"></i></button>
             <h2 id="page-title">每日報工</h2>
         </header>
 
@@ -111,7 +108,7 @@
             
             <div id="daily-record" class="page-section" style="display: block;">
                 <div class="section" style="border-top: 4px solid #4a5568;">
-                    <h2>1. 生產基本資料</h2>
+                    <h2>1. 生觸基本資料</h2>
                     <div style="margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid #e2e8f0;">
                         <label style="font-weight: bold; font-size: 14px; color: #4a5568; display: block; margin-bottom: 5px;">日期</label>
                         <input type="date" id="recordDate" onchange="loadRecordsByDate()" style="max-width: 250px;">
@@ -680,6 +677,14 @@
         }
 
         async function submitMachineRecord() {
+            // ★ 自動防呆：如果上方輸入框有資料未加入，自動幫它加入
+            const dtReason = document.getElementById('downtimeReasonSelect').value;
+            const dtH = parseInt(document.getElementById('downtimeHour').value) || 0;
+            const dtM = parseInt(document.getElementById('downtimeMinute').value) || 0;
+            if (dtReason && (dtH * 60 + dtM) > 0) {
+                addDowntimeToList();
+            }
+
             const date = document.getElementById('recordDate').value; const line = document.getElementById('recordLine').value;
             const startTime = getSelectedTime('startHour', 'startMinute'); const endTime = getSelectedTime('endHour', 'endMinute'); 
             const machineId = document.getElementById('recordMachine').value; const isRollingBreak = document.getElementById('isRollingBreak').checked;
@@ -960,6 +965,14 @@
         function removeInlineDowntime(idx) { inlineDowntimeEvents.splice(idx, 1); document.getElementById('inlineDowntimeListContainer').innerHTML = generateInlineDowntimeListHTML(); }
 
         async function saveInlineEdit(recordId) {
+            // ★ 自動防呆：如果展開編輯框裡面有尚未加入的資料，自動幫它加入
+            const dtReason = document.getElementById('editDtReason').value;
+            const dtH = parseInt(document.getElementById('editDtHour').value) || 0;
+            const dtM = parseInt(document.getElementById('editDtMinute').value) || 0;
+            if (dtReason && (dtH * 60 + dtM) > 0) {
+                addInlineDowntime();
+            }
+
             const startTime = getSelectedTime('editStartHour', 'editStartMinute');
             const endTime = getSelectedTime('editEndHour', 'editEndMinute');
             const isRollingBreak = document.getElementById('editRolling').checked;
@@ -982,14 +995,14 @@
             loadRecordsByDate(); 
         }
 
-        // ================= ★ 統計與導出邏輯 (加入實際生產時間) ★ =================
+        // ================= ★ 統計與導出邏輯 ★ =================
         async function queryStatistics() {
             const startDate = document.getElementById('statStartDate').value; const endDate = document.getElementById('statEndDate').value; 
             const lineName = document.getElementById('statLine').value; const machineId = document.getElementById('statMachine').value;
             
             if (!startDate || !endDate) return alert('請選擇開始與結束日期！');
 
-            let query = db.from('production_records').select('*, machines(name), downtime_events(duration_minutes, remark, downtime_reasons(name, is_planned))').gte('record_date', startDate).lte('record_date', endDate).order('record_date', { ascending: true });
+            let query = db.from('production_records').select('*, machines(name), downtime_events(duration_minutes, remark, downtime_reasons(name, is_planned))').gte('record_date', startDate).lte('record_date', endDate);
             if (lineName) query = query.eq('line_name', lineName); if (machineId) query = query.eq('machine_id', machineId);
 
             const { data: records, error } = await query;
@@ -1066,7 +1079,6 @@
                 const actualAvailMin = plannedActualMin - recordPlannedDowntime; 
                 let recordOEE = actualAvailMin > 0 ? ((actualAvailMin - recordUnplannedDowntime) / actualAvailMin) * 100 : 0;
                 
-                // ★ 實際生產時間 = 實際可用時間 - 非計畫停機
                 const actualProductionTime = actualAvailMin - recordUnplannedDowntime;
 
                 simpleExportData.push({
@@ -1077,7 +1089,6 @@
 
                 const rKeys = Object.keys(recordReasonMap).sort((a, b) => a.localeCompare(b, 'zh-TW'));
                 
-                // ★ 修改：配合要求的 EXCEL 欄位順序與內容
                 if (rKeys.length === 0) {
                     currentExportData.push({ 
                         "日期": record.record_date, 
@@ -1244,17 +1255,6 @@
             document.getElementById('page-title').innerText = title; 
             document.querySelectorAll('.nav-links a').forEach(l => l.classList.remove('active')); 
             document.getElementById('nav-' + pageId).classList.add('active'); 
-            
-            const sidebar = document.getElementById('sidebar');
-            if (window.innerWidth <= 768) {
-                sidebar.style.display = 'none';
-            }
-        }
-        
-        function toggleSidebar() { 
-            const sidebar = document.getElementById('sidebar'); 
-            const isHidden = window.getComputedStyle(sidebar).display === 'none';
-            sidebar.style.display = isHidden ? 'flex' : 'none'; 
         }
     </script>
 </body>
