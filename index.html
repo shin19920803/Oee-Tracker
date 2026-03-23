@@ -375,7 +375,7 @@
         let inlineEditingId = null;
         let inlineDowntimeEvents = [];
 
-        // ★ 新增：類別與原因陣列
+        // ★ 類別與原因陣列
         let allCategories = [];
         let allReasons = [];
 
@@ -614,7 +614,6 @@
                 operatorSelect.value = "";
             }
         }
-
         function updateRecordMachineDropdown() {
             const recordSelect = document.getElementById('recordMachine'); const selectedLineName = document.getElementById('recordLine').value;
             recordSelect.innerHTML = '<option value="">請先選擇機台</option>'; if (!selectedLineName) return;
@@ -757,6 +756,10 @@
 
             optgroupPlanned += '</optgroup>'; optgroupUnplanned += '</optgroup>';
             select.innerHTML += optgroupPlanned + optgroupUnplanned;
+            
+            // 展開編輯框的下拉選單也同步更新
+            const editSelect = document.getElementById('editDtReason');
+            if (editSelect) editSelect.innerHTML = select.innerHTML;
         }
 
         async function addReason(isPlanned) { 
@@ -820,7 +823,6 @@
             const reasonId = select.value; 
             if (!reasonId) return alert('請選擇停機項目！');
             
-            // 取得乾淨的停機名稱(不含類別前綴)供畫面顯示
             const reasonName = select.options[select.selectedIndex].text.replace(/^\[.*?\]\s*/, '');
             const isPlanned = select.options[select.selectedIndex].getAttribute('data-planned') === 'true';
             const hours = parseInt(document.getElementById('downtimeHour').value); const minutes = parseInt(document.getElementById('downtimeMinute').value);
@@ -868,6 +870,7 @@
         }
 
         async function submitMachineRecord() {
+            // 自動防呆
             const dtReason = document.getElementById('downtimeReasonSelect').value;
             const dtH = parseInt(document.getElementById('downtimeHour').value) || 0;
             const dtM = parseInt(document.getElementById('downtimeMinute').value) || 0;
@@ -1158,6 +1161,7 @@
         function removeInlineDowntime(idx) { inlineDowntimeEvents.splice(idx, 1); document.getElementById('inlineDowntimeListContainer').innerHTML = generateInlineDowntimeListHTML(); }
 
         async function saveInlineEdit(recordId) {
+            // 自動防呆
             const dtReason = document.getElementById('editDtReason').value;
             const dtH = parseInt(document.getElementById('editDtHour').value) || 0;
             const dtM = parseInt(document.getElementById('editDtMinute').value) || 0;
@@ -1187,7 +1191,7 @@
             loadRecordsByDate(); 
         }
 
-        // ================= ★ 統計與導出邏輯 ★ =================
+        // ================= ★ 統計與導出邏輯 (完美融合防重複與類別) ★ =================
         async function queryStatistics() {
             const startDate = document.getElementById('statStartDate').value; const endDate = document.getElementById('statEndDate').value; 
             const lineName = document.getElementById('statLine').value; const machineId = document.getElementById('statMachine').value;
@@ -1199,6 +1203,7 @@
 
             const { data: records, error } = await query;
             
+            // 防重複疊加的合併邏輯
             let mergedMap = {};
             (records || []).forEach(r => {
                 let key = `${r.record_date}_${r.machine_id}`;
@@ -1232,7 +1237,7 @@
                 alert(error ? '查詢失敗！' : '這段期間沒有符合條件的資料！'); 
                 document.getElementById('statOEE').innerText = '0.0%'; document.getElementById('statTotalDowntime').innerText = '0 分鐘'; 
                 document.getElementById('statSummaryBody').innerHTML = '<tr><td colspan="4" style="text-align:center;">無資料</td></tr>';
-                document.getElementById('statDetailBody').innerHTML = '<tr><td colspan="10" style="text-align:center;">無資料</td></tr>';
+                document.getElementById('statDetailBody').innerHTML = '<tr><td colspan="11" style="text-align:center;">無資料</td></tr>';
                 if (downtimeChartInstance) downtimeChartInstance.destroy(); currentExportData = []; simpleExportData = []; weeklyExportData = []; monthlyExportData = []; 
                 document.getElementById('summaryMachineFilter').innerHTML = '<option value="">請重新查詢</option>';
                 return; 
@@ -1284,6 +1289,8 @@
                 }
                 
                 const actualAvailMin = plannedActualMin - recordPlannedDowntime; 
+                
+                // 防呆鎖：防止實際生產時間低於 0 分鐘
                 let actualProductionTime = actualAvailMin - recordUnplannedDowntime;
                 if (actualProductionTime < 0) actualProductionTime = 0;
 
@@ -1315,6 +1322,7 @@
 
                 const rKeys = Object.keys(recordReasonMap).sort((a, b) => a.localeCompare(b, 'zh-TW'));
                 
+                // Excel 欄位順序對齊
                 if (rKeys.length === 0) {
                     currentExportData.push({ 
                         "日期": record.record_date, 
@@ -1335,7 +1343,7 @@
                         "稼動率(%)": recordOEE.toFixed(2) + '%', 
                         "備註": "-" 
                     });
-                    detailHTML += `<tr><td>${record.record_date}</td><td>${record.line_name}</td><td>${record.machines.name}</td><td>${actualAvailMin}</td><td>-</td><td>無</td><td>-</td><td>-</td><td style="color:#e53e3e; font-weight:bold;">0</td><td>${recordOEE.toFixed(2)}%</td></tr>`;
+                    detailHTML += `<tr><td>${record.record_date}</td><td>${record.line_name}</td><td>${record.machines.name}</td><td>${actualAvailMin}</td><td>-</td><td>無</td><td>-</td><td>-</td><td style="color:#e53e3e; font-weight:bold;">0</td><td>${actualProductionTime}</td><td>${recordOEE.toFixed(2)}%</td></tr>`;
                 } else {
                     rKeys.forEach((rName, idx) => {
                         const tInfo = recordReasonMap[rName];
@@ -1375,6 +1383,7 @@
                                 <td style="font-weight:bold; ${colorStyle}">${tInfo.duration}</td>
                                 <td rowspan="${rKeys.length}" style="word-break: break-all; max-width: 150px; white-space: normal;"><span style="font-size:13px; color:#718096;">${combinedRemarks || '-'}</span></td>
                                 <td rowspan="${rKeys.length}" style="color:#e53e3e; font-weight:bold;">${recordUnplannedDowntime}</td>
+                                <td rowspan="${rKeys.length}">${actualProductionTime}</td>
                                 <td rowspan="${rKeys.length}">${recordOEE.toFixed(2)}%</td>
                             </tr>`;
                         } else {
