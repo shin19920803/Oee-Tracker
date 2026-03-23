@@ -138,7 +138,7 @@
                     <h2>2. 新增機台與停機紀錄</h2>
                     <div class="form-grid">
                         <div><label>機台名稱</label><select id="recordMachine"><option value="">請先選擇上方線別</option></select></div>
-                        <div><label>登記人</label><select id="recordOperator"><option value="">請先至基礎設定新增</option></select></div>
+                        <div><label>登記人</label><select id="recordOperator"><option value="">請先選擇線別</option></select></div>
                     </div>
 
                     <div style="background-color: #f7fafc; padding: 15px; border-radius: 8px; margin-top: 15px;">
@@ -238,13 +238,14 @@
                                     <th>可用時間(分)</th>
                                     <th>停機項目</th>
                                     <th>該項停機(分)</th>
-                                    <th>備註</th>
                                     <th>非計畫總停機</th>
+                                    <th>實際生產時間</th>
                                     <th>稼動率</th>
+                                    <th>備註</th>
                                 </tr>
                             </thead>
                             <tbody id="statDetailBody">
-                                <tr><td colspan="9" style="text-align:center;">請先查詢統計資料...</td></tr>
+                                <tr><td colspan="10" style="text-align:center;">請先查詢統計資料...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -329,7 +330,6 @@
         let downtimeChartInstance = null;
         let currentExportData = [];
         let simpleExportData = [];
-        // ★ 新增：存放週與月匯出的資料陣列
         let weeklyExportData = [];
         let monthlyExportData = [];
         
@@ -359,7 +359,7 @@
             loadRecordsByDate();
         });
 
-        // 用於計算並返回「ISO 週別」字串 (例如：2026-W12)
+        // 取得 ISO 週別字串 (如 2026-W12)
         function getWeekString(dStr) {
             const [y, m, d] = dStr.split('-').map(Number);
             const date = new Date(y, m - 1, d);
@@ -385,8 +385,11 @@
                     list.innerHTML += `<li>${op.name} <div class="btn-group"><button class="edit-btn" onclick="editOperator('${op.id}', '${op.name}')">編輯</button><button class="delete-btn" onclick="deleteOperator('${op.id}')">刪除</button></div></li>`;
                     select.innerHTML += `<option value="${op.name}">${op.name}</option>`;
                 });
-                const savedOp = localStorage.getItem('smtSavedOperator');
-                if(savedOp) select.value = savedOp;
+                const savedLine = localStorage.getItem('smtSavedLine');
+                if (savedLine) {
+                    const savedOp = localStorage.getItem('smtSavedOperator_' + savedLine);
+                    if (savedOp) select.value = savedOp;
+                }
             }
         }
         
@@ -705,6 +708,7 @@
         }
 
         async function submitMachineRecord() {
+            // 自動防呆
             const dtReason = document.getElementById('downtimeReasonSelect').value;
             const dtH = parseInt(document.getElementById('downtimeHour').value) || 0;
             const dtM = parseInt(document.getElementById('downtimeMinute').value) || 0;
@@ -995,6 +999,7 @@
         function removeInlineDowntime(idx) { inlineDowntimeEvents.splice(idx, 1); document.getElementById('inlineDowntimeListContainer').innerHTML = generateInlineDowntimeListHTML(); }
 
         async function saveInlineEdit(recordId) {
+            // 自動防呆
             const dtReason = document.getElementById('editDtReason').value;
             const dtH = parseInt(document.getElementById('editDtHour').value) || 0;
             const dtM = parseInt(document.getElementById('editDtMinute').value) || 0;
@@ -1024,18 +1029,19 @@
             loadRecordsByDate(); 
         }
 
-        // ================= ★ 統計與導出邏輯 (新增所有機台平均與週/月匯出) ★ =================
+        // ================= ★ 統計與導出邏輯 ★ =================
         async function queryStatistics() {
             const startDate = document.getElementById('statStartDate').value; const endDate = document.getElementById('statEndDate').value; 
             const lineName = document.getElementById('statLine').value; const machineId = document.getElementById('statMachine').value;
             
             if (!startDate || !endDate) return alert('請選擇開始與結束日期！');
 
-            let query = db.from('production_records').select('*, machines(name), downtime_events(duration_minutes, remark, downtime_reasons(name, is_planned))').gte('record_date', startDate).lte('record_date', endDate).order('record_date', { ascending: true });
+            let query = db.from('production_records').select('*, machines(name), downtime_events(duration_minutes, remark, downtime_reasons(name, is_planned))').gte('record_date', startDate).lte('record_date', endDate);
             if (lineName) query = query.eq('line_name', lineName); if (machineId) query = query.eq('machine_id', machineId);
 
             const { data: records, error } = await query;
             
+            // ★ 精準防重複合併邏輯：只取最新的獨立紀錄，並剔除因為誤按存檔產生的完全重複停機明細
             let mergedMap = {};
             (records || []).forEach(r => {
                 let key = `${r.record_date}_${r.machine_id}`;
@@ -1043,7 +1049,17 @@
                     mergedMap[key] = { ...r, downtime_events: r.downtime_events ? [...r.downtime_events] : [] };
                 } else {
                     if (r.downtime_events) {
-                        mergedMap[key].downtime_events.push(...r.downtime_events);
+                        r.downtime_events.forEach(ev => {
+                            // 比對是否為相同的停機理由、時間、備註 (防呆：防止使用者連點導致的無效疊加)
+                            const isDup = mergedMap[key].downtime_events.some(e => 
+                                e.downtime_reasons.name === ev.downtime_reasons.name && 
+                                e.duration_minutes === ev.duration_minutes && 
+                                (e.remark || '') === (ev.remark || '')
+                            );
+                            if (!isDup) {
+                                mergedMap[key].downtime_events.push(ev);
+                            }
+                        });
                     }
                 }
             });
@@ -1060,15 +1076,13 @@
                 alert(error ? '查詢失敗！' : '這段期間沒有符合條件的資料！'); 
                 document.getElementById('statOEE').innerText = '0.0%'; document.getElementById('statTotalDowntime').innerText = '0 分鐘'; 
                 document.getElementById('statSummaryBody').innerHTML = '<tr><td colspan="4" style="text-align:center;">無資料</td></tr>';
-                document.getElementById('statDetailBody').innerHTML = '<tr><td colspan="9" style="text-align:center;">無資料</td></tr>';
-                if (downtimeChartInstance) downtimeChartInstance.destroy(); 
-                currentExportData = []; simpleExportData = []; weeklyExportData = []; monthlyExportData = [];
+                document.getElementById('statDetailBody').innerHTML = '<tr><td colspan="10" style="text-align:center;">無資料</td></tr>';
+                if (downtimeChartInstance) downtimeChartInstance.destroy(); currentExportData = []; simpleExportData = []; weeklyExportData = []; monthlyExportData = []; 
                 document.getElementById('summaryMachineFilter').innerHTML = '<option value="">請重新查詢</option>';
                 return; 
             }
 
             const summarySelect = document.getElementById('summaryMachineFilter');
-            // ★ 新增：全部機台選項，作為下拉選單的第一個選項
             summarySelect.innerHTML = '<option value="ALL">全部機台平均</option>';
             const uniqueMachinesInQuery = {};
             currentQueriedRecords.forEach(r => uniqueMachinesInQuery[r.machine_id] = r.machines.name);
@@ -1113,8 +1127,10 @@
                 }
                 
                 const actualAvailMin = plannedActualMin - recordPlannedDowntime; 
-                let recordOEE = actualAvailMin > 0 ? ((actualAvailMin - recordUnplannedDowntime) / actualAvailMin) * 100 : 0;
+                // ★ 計算實際生產時間
                 const actualProductionTime = actualAvailMin - recordUnplannedDowntime;
+                
+                let recordOEE = actualAvailMin > 0 ? (actualProductionTime / actualAvailMin) * 100 : 0;
 
                 simpleExportData.push({
                     "日期": record.record_date,
@@ -1122,7 +1138,6 @@
                     "稼動率": recordOEE.toFixed(2) + '%'
                 });
 
-                // ★ 統計每週與每月資料
                 const weekStr = getWeekString(record.record_date);
                 const monthStr = record.record_date.substring(0, 7);
                 const mName = record.machines.name;
@@ -1139,6 +1154,7 @@
 
                 const rKeys = Object.keys(recordReasonMap).sort((a, b) => a.localeCompare(b, 'zh-TW'));
                 
+                // ★ 完美對齊請求的 Excel 欄位順序與內容
                 if (rKeys.length === 0) {
                     currentExportData.push({ 
                         "日期": record.record_date, 
@@ -1158,7 +1174,7 @@
                         "稼動率(%)": recordOEE.toFixed(2) + '%', 
                         "備註": "-" 
                     });
-                    detailHTML += `<tr><td>${record.record_date}</td><td>${record.line_name}</td><td>${record.machines.name}</td><td>${actualAvailMin}</td><td>無</td><td>-</td><td>-</td><td style="color:#e53e3e; font-weight:bold;">0</td><td>${recordOEE.toFixed(2)}%</td></tr>`;
+                    detailHTML += `<tr><td>${record.record_date}</td><td>${record.line_name}</td><td>${record.machines.name}</td><td>${actualAvailMin}</td><td>無</td><td>-</td><td>-</td><td>0</td><td>${recordOEE.toFixed(2)}%</td><td>-</td></tr>`;
                 } else {
                     rKeys.forEach((rName, idx) => {
                         const tInfo = recordReasonMap[rName];
@@ -1194,7 +1210,7 @@
                                 <td rowspan="${rKeys.length}">${actualAvailMin}</td>
                                 <td style="border-left: 1px solid #e2e8f0;">${rName} <br><span style="font-size:12px;${colorStyle}">[${typeStr}]</span></td>
                                 <td style="font-weight:bold; ${colorStyle}">${tInfo.duration}</td>
-                                <td style="word-break: break-all; max-width: 150px; white-space: normal;"><span style="font-size:13px; color:#718096;">${combinedRemarks || '-'}</span></td>
+                                <td rowspan="${rKeys.length}" style="word-break: break-all; max-width: 150px; white-space: normal;"><span style="font-size:13px; color:#718096;">${combinedRemarks || '-'}</span></td>
                                 <td rowspan="${rKeys.length}" style="color:#e53e3e; font-weight:bold;">${recordUnplannedDowntime}</td>
                                 <td rowspan="${rKeys.length}">${recordOEE.toFixed(2)}%</td>
                             </tr>`;
@@ -1202,7 +1218,6 @@
                             detailHTML += `<tr>
                                 <td style="border-left: 1px solid #e2e8f0;">${rName} <br><span style="font-size:12px;${colorStyle}">[${typeStr}]</span></td>
                                 <td style="font-weight:bold; ${colorStyle}">${tInfo.duration}</td>
-                                <td style="word-break: break-all; max-width: 150px; white-space: normal;"><span style="font-size:13px; color:#718096;">${combinedRemarks || '-'}</span></td>
                             </tr>`;
                         }
                     });
@@ -1211,7 +1226,6 @@
 
             document.getElementById('statDetailBody').innerHTML = detailHTML;
 
-            // ★ 將週/月資料轉為匯出陣列並排序
             weeklyExportData = Object.values(weeklyMap).map(w => {
                 let oee = w.avail > 0 ? ((w.avail - w.unplanned) / w.avail) * 100 : 0;
                 return { "週別": w.period, "機台": w.machine, "平均稼動率": oee.toFixed(2) + '%' };
@@ -1232,7 +1246,6 @@
             const selectedMachineId = document.getElementById('summaryMachineFilter').value;
             if (!selectedMachineId) return; 
 
-            // ★ 修改：如果是 ALL，則不套用 filter，計算所有機台
             let filteredRecords = currentQueriedRecords;
             if (selectedMachineId !== 'ALL') {
                 filteredRecords = currentQueriedRecords.filter(r => r.machine_id === selectedMachineId);
@@ -1298,7 +1311,6 @@
             let sumForAllPie = chartData.reduce((a, b) => a + b, 0);
             if (sumForAllPie > 0) {
                 const pieLabels = chartLabels.map((k, i) => `${k} (${((chartData[i] / sumForAllPie) * 100).toFixed(1)}%)`);
-                // 動態調整圓餅圖標題
                 const titleText = selectedMachineId === 'ALL' ? '全部機台總時間佔比分析' : '機台總時間佔比分析';
                 downtimeChartInstance = new Chart(ctx, { type: 'pie', data: { labels: pieLabels, datasets: [{ data: chartData, backgroundColor: chartColors }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' }, title: { display: true, text: titleText, font: { size: 16 } } } } });
             } else {
@@ -1306,12 +1318,10 @@
             }
         }
 
-        // ★ 修改：匯出四個不同的工作表
         function exportToExcel() { 
             if (currentExportData.length === 0) return alert('請先查詢資料！'); 
             
             const wb = XLSX.utils.book_new(); 
-            
             const ws1 = XLSX.utils.json_to_sheet(simpleExportData);
             XLSX.utils.book_append_sheet(wb, ws1, "每日稼動率");
 
