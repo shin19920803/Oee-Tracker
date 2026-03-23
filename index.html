@@ -236,17 +236,16 @@
                                     <th>線別</th>
                                     <th>機台</th>
                                     <th>可用時間(分)</th>
-                                    <th>停機大類</th>
                                     <th>停機項目</th>
                                     <th>該項停機(分)</th>
-                                    <th>備註</th>
                                     <th>非計畫總停機</th>
                                     <th>實際生產時間</th>
                                     <th>稼動率</th>
+                                    <th>備註</th>
                                 </tr>
                             </thead>
                             <tbody id="statDetailBody">
-                                <tr><td colspan="11" style="text-align:center;">請先查詢統計資料...</td></tr>
+                                <tr><td colspan="10" style="text-align:center;">請先查詢統計資料...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -288,55 +287,21 @@
                     <div class="section" style="border-top: 4px solid #ecc94b;">
                         <h2><i class="fas fa-clipboard-check"></i> 計畫性停機</h2>
                         <p style="font-size: 12px; color: #718096; margin-top: 0;">(如:保養、換線。直接扣除當天可用時間，不當作損失)</p>
-                        
-                        <div style="background-color: #f7fafc; padding: 10px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #e2e8f0;">
-                            <label style="font-weight: bold; margin-bottom: 5px; display: block; color: #2c3e50; font-size: 13px;">1. 類別管理</label>
-                            <div class="input-group" style="flex-wrap: wrap; margin-bottom: 10px;">
-                                <select id="plannedCategorySelect" style="flex: 2; min-width: 150px;" onchange="renderReasons()"></select>
-                                <button class="edit-btn" style="background-color: #ecc94b; color: #744210;" onclick="editCategory(true)">修改</button>
-                                <button class="delete-btn" onclick="deleteCategory(true)">刪除</button>
-                            </div>
-                            <div class="input-group" style="flex-wrap: wrap; margin-bottom: 0;">
-                                <input type="text" id="newPlannedCategory" placeholder="輸入新類別名稱" style="min-width: 150px; flex: 2;">
-                                <button onclick="addCategory(true)" style="background-color: #38a169;">新增類別</button>
-                            </div>
+                        <div class="input-group" style="flex-wrap: wrap;">
+                            <input type="text" id="plannedReasonName" placeholder="例: 設備保養" style="min-width: 150px;">
+                            <button onclick="addReason(true)">新增項目</button>
                         </div>
-
-                        <div style="background-color: #f7fafc; padding: 10px; border-radius: 8px; border: 1px solid #e2e8f0;">
-                            <label style="font-weight: bold; margin-bottom: 5px; display: block; color: #2c3e50; font-size: 13px;">2. 項目管理 (加入至上方所選類別)</label>
-                            <div class="input-group" style="flex-wrap: wrap; margin-bottom: 10px;">
-                                <input type="text" id="plannedReasonName" placeholder="例: 設備保養" style="min-width: 150px; flex: 2;">
-                                <button onclick="addReason(true)" style="background-color: #3182ce;">新增項目</button>
-                            </div>
-                            <ul id="plannedReasonList" style="margin-bottom: 0;"></ul>
-                        </div>
+                        <ul id="plannedReasonList"></ul>
                     </div>
 
                     <div class="section" style="border-top: 4px solid #e53e3e;">
                         <h2><i class="fas fa-exclamation-triangle"></i> 非計畫性停機</h2>
                         <p style="font-size: 12px; color: #718096; margin-top: 0;">(如:故障、缺料。直接視為生產損失，扣除稼動率)</p>
-                        
-                        <div style="background-color: #f7fafc; padding: 10px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #e2e8f0;">
-                            <label style="font-weight: bold; margin-bottom: 5px; display: block; color: #2c3e50; font-size: 13px;">1. 類別管理</label>
-                            <div class="input-group" style="flex-wrap: wrap; margin-bottom: 10px;">
-                                <select id="unplannedCategorySelect" style="flex: 2; min-width: 150px;" onchange="renderReasons()"></select>
-                                <button class="edit-btn" style="background-color: #ecc94b; color: #744210;" onclick="editCategory(false)">修改</button>
-                                <button class="delete-btn" onclick="deleteCategory(false)">刪除</button>
-                            </div>
-                            <div class="input-group" style="flex-wrap: wrap; margin-bottom: 0;">
-                                <input type="text" id="newUnplannedCategory" placeholder="輸入新類別名稱" style="min-width: 150px; flex: 2;">
-                                <button onclick="addCategory(false)" style="background-color: #38a169;">新增類別</button>
-                            </div>
+                        <div class="input-group" style="flex-wrap: wrap;">
+                            <input type="text" id="unplannedReasonName" placeholder="例: 異常排除" style="min-width: 150px;">
+                            <button onclick="addReason(false)">新增項目</button>
                         </div>
-
-                        <div style="background-color: #f7fafc; padding: 10px; border-radius: 8px; border: 1px solid #e2e8f0;">
-                            <label style="font-weight: bold; margin-bottom: 5px; display: block; color: #2c3e50; font-size: 13px;">2. 項目管理 (加入至上方所選類別)</label>
-                            <div class="input-group" style="flex-wrap: wrap; margin-bottom: 10px;">
-                                <input type="text" id="unplannedReasonName" placeholder="例: 異常排除" style="min-width: 150px; flex: 2;">
-                                <button onclick="addReason(false)" style="background-color: #3182ce;">新增項目</button>
-                            </div>
-                            <ul id="unplannedReasonList" style="margin-bottom: 0;"></ul>
-                        </div>
+                        <ul id="unplannedReasonList"></ul>
                     </div>
 
                     <div class="section" style="border-top: 4px solid #3182ce;">
@@ -375,15 +340,11 @@
         let inlineEditingId = null;
         let inlineDowntimeEvents = [];
 
-        // ★ 類別與原因陣列
-        let allCategories = [];
-        let allReasons = [];
-
         document.addEventListener('DOMContentLoaded', () => {
             populateTimeSelects();
             fetchLines().then(() => fetchMachines());
+            fetchReasons();
             fetchOperators(); 
-            fetchAllReasonData(); // 同步抓取類別與原因
             
             const today = new Date();
             document.getElementById('recordDate').valueAsDate = today;
@@ -398,6 +359,7 @@
             loadRecordsByDate();
         });
 
+        // 取得 ISO 週別字串 (如 2026-W12)
         function getWeekString(dStr) {
             const [y, m, d] = dStr.split('-').map(Number);
             const date = new Date(y, m - 1, d);
@@ -614,6 +576,7 @@
                 operatorSelect.value = "";
             }
         }
+
         function updateRecordMachineDropdown() {
             const recordSelect = document.getElementById('recordMachine'); const selectedLineName = document.getElementById('recordLine').value;
             recordSelect.innerHTML = '<option value="">請先選擇機台</option>'; if (!selectedLineName) return;
@@ -627,156 +590,31 @@
             targetMachines.forEach(m => { statMachineSelect.innerHTML += `<option value="${m.id}">${m.name}</option>`; });
         }
 
-        // ================= ★ 全新：類別與原因管理邏輯 ★ =================
-        async function fetchAllReasonData() {
-            await fetchCategories();
-            await fetchReasons();
-        }
-
-        async function fetchCategories() {
-            const { data } = await db.from('downtime_categories').select('*').order('created_at', { ascending: true });
-            allCategories = data || [];
-            
-            const pSelect = document.getElementById('plannedCategorySelect');
-            const uSelect = document.getElementById('unplannedCategorySelect');
-            
-            const currentP = pSelect.value;
-            const currentU = uSelect.value;
-            
-            pSelect.innerHTML = '';
-            uSelect.innerHTML = '';
-            
-            const pCats = allCategories.filter(c => c.is_planned);
-            const uCats = allCategories.filter(c => !c.is_planned);
-            
-            if (pCats.length === 0) pSelect.innerHTML = '<option value="">請先新增類別</option>';
-            pCats.forEach(c => pSelect.innerHTML += `<option value="${c.name}">${c.name}</option>`);
-            
-            if (uCats.length === 0) uSelect.innerHTML = '<option value="">請先新增類別</option>';
-            uCats.forEach(c => uSelect.innerHTML += `<option value="${c.name}">${c.name}</option>`);
-            
-            if (currentP && pCats.find(c => c.name === currentP)) pSelect.value = currentP;
-            if (currentU && uCats.find(c => c.name === currentU)) uSelect.value = currentU;
-            
-            renderReasons();
-        }
-
-        async function addCategory(isPlanned) {
-            const inputId = isPlanned ? 'newPlannedCategory' : 'newUnplannedCategory';
-            const name = document.getElementById(inputId).value.trim();
-            if (!name) return alert('請輸入類別名稱！');
-            
-            if (allCategories.find(c => c.name === name && c.is_planned === isPlanned)) {
-                return alert('該類別已存在！');
-            }
-            
-            await db.from('downtime_categories').insert([{ name, is_planned: isPlanned }]);
-            document.getElementById(inputId).value = '';
-            await fetchCategories();
-        }
-
-        async function editCategory(isPlanned) {
-            const selectId = isPlanned ? 'plannedCategorySelect' : 'unplannedCategorySelect';
-            const oldName = document.getElementById(selectId).value;
-            if (!oldName) return alert('請先選擇要修改的類別！');
-            
-            const newName = prompt('請輸入新的類別名稱：', oldName);
-            if (newName && newName.trim() !== oldName) {
-                const trimName = newName.trim();
-                const exists = allCategories.find(c => c.name === trimName && c.is_planned === isPlanned);
-                if (exists) return alert('該類別名稱已存在！');
-
-                await db.from('downtime_categories').update({ name: trimName }).eq('name', oldName).eq('is_planned', isPlanned);
-                // 同步更新底下所有細項的類別名稱
-                await db.from('downtime_reasons').update({ category: trimName }).eq('category', oldName).eq('is_planned', isPlanned);
-                
-                await fetchAllReasonData();
-            }
-        }
-
-        async function deleteCategory(isPlanned) {
-            const selectId = isPlanned ? 'plannedCategorySelect' : 'unplannedCategorySelect';
-            const name = document.getElementById(selectId).value;
-            if (!name) return alert('請先選擇要刪除的類別！');
-            
-            if (confirm(`確定要刪除類別「${name}」嗎？\n⚠️ 警告：這將會一併刪除該類別底下的所有停機細項！`)) {
-                await db.from('downtime_categories').delete().eq('name', name).eq('is_planned', isPlanned);
-                await db.from('downtime_reasons').delete().eq('category', name).eq('is_planned', isPlanned);
-                await fetchAllReasonData();
-            }
-        }
-
         async function fetchReasons() {
-            const { data } = await db.from('downtime_reasons').select('id, name, is_planned, category');
-            allReasons = data || [];
-            allReasons.sort((a, b) => (a.category||'').localeCompare(b.category||'', 'zh-TW') || a.name.localeCompare(b.name, 'zh-TW'));
-            
-            updateMainReasonDropdown();
-            renderReasons();
-        }
+            const { data } = await db.from('downtime_reasons').select('id, name, is_planned');
+            const plannedList = document.getElementById('plannedReasonList'); const unplannedList = document.getElementById('unplannedReasonList'); const select = document.getElementById('downtimeReasonSelect');
+            plannedList.innerHTML = ''; unplannedList.innerHTML = ''; select.innerHTML = '<option value="">請選擇停機項目</option>';
+            if(!data) return;
 
-        function renderReasons() {
-            const pList = document.getElementById('plannedReasonList');
-            const uList = document.getElementById('unplannedReasonList');
-            
-            const pCat = document.getElementById('plannedCategorySelect').value;
-            const uCat = document.getElementById('unplannedCategorySelect').value;
-            
-            pList.innerHTML = '';
-            uList.innerHTML = '';
-            
-            const filteredP = allReasons.filter(r => r.is_planned && r.category === pCat);
-            if (filteredP.length === 0) pList.innerHTML = '<li style="color:#a0aec0; font-size:13px; justify-content:center;">此類別尚無項目</li>';
-            filteredP.forEach(r => {
-                pList.innerHTML += `<li>[${r.category}] ${r.name} <div class="btn-group"><button class="edit-btn" onclick="editReason('${r.id}', '${r.name}')">編輯</button><button class="delete-btn" onclick="deleteReason('${r.id}')">刪除</button></div></li>`;
-            });
-            
-            const filteredU = allReasons.filter(r => !r.is_planned && r.category === uCat);
-            if (filteredU.length === 0) uList.innerHTML = '<li style="color:#a0aec0; font-size:13px; justify-content:center;">此類別尚無項目</li>';
-            filteredU.forEach(r => {
-                uList.innerHTML += `<li>[${r.category}] ${r.name} <div class="btn-group"><button class="edit-btn" onclick="editReason('${r.id}', '${r.name}')">編輯</button><button class="delete-btn" onclick="deleteReason('${r.id}')">刪除</button></div></li>`;
-            });
-        }
+            data.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
 
-        function updateMainReasonDropdown() {
-            const select = document.getElementById('downtimeReasonSelect');
-            select.innerHTML = '<option value="">請選擇停機項目</option>';
-            
             let optgroupPlanned = '<optgroup label="=== 計畫性停機 (扣除總可用時間) ===">';
             let optgroupUnplanned = '<optgroup label="=== 非計畫性停機 (扣除稼動率) ===">';
 
-            allReasons.forEach(r => {
-                const catStr = r.category ? `[${r.category}] ` : '';
-                if (r.is_planned) { 
-                    optgroupPlanned += `<option value="${r.id}" data-planned="true" data-category="${r.category}">${catStr}${r.name}</option>`; 
-                } else { 
-                    optgroupUnplanned += `<option value="${r.id}" data-planned="false" data-category="${r.category}">${catStr}${r.name}</option>`; 
-                }
+            data.forEach(r => {
+                const liHTML = `<li>${r.name} <div class="btn-group"><button class="edit-btn" onclick="editReason('${r.id}', '${r.name}')">編輯</button><button class="delete-btn" onclick="deleteReason('${r.id}')">刪除</button></div></li>`;
+                if (r.is_planned) { plannedList.innerHTML += liHTML; optgroupPlanned += `<option value="${r.id}" data-planned="true">${r.name}</option>`; } 
+                else { unplannedList.innerHTML += liHTML; optgroupUnplanned += `<option value="${r.id}" data-planned="false">${r.name}</option>`; }
             });
 
             optgroupPlanned += '</optgroup>'; optgroupUnplanned += '</optgroup>';
             select.innerHTML += optgroupPlanned + optgroupUnplanned;
-            
-            // 展開編輯框的下拉選單也同步更新
-            const editSelect = document.getElementById('editDtReason');
-            if (editSelect) editSelect.innerHTML = select.innerHTML;
         }
 
         async function addReason(isPlanned) { 
-            const selectId = isPlanned ? 'plannedCategorySelect' : 'unplannedCategorySelect';
-            const inputId = isPlanned ? 'plannedReasonName' : 'unplannedReasonName';
-            
-            const category = document.getElementById(selectId).value;
-            const name = document.getElementById(inputId).value.trim();
-            
-            if (!category) return alert('請先選擇或新增一個大類別！');
-            if (!name) return alert('請輸入項目名稱！');
-            
-            await db.from('downtime_reasons').insert([{ name: name, is_planned: isPlanned, category: category }]);
-            document.getElementById(inputId).value = '';
-            fetchReasons();
+            const inputId = isPlanned ? 'plannedReasonName' : 'unplannedReasonName'; const name = document.getElementById(inputId).value.trim(); 
+            if (name) { await db.from('downtime_reasons').insert([{ name: name, is_planned: isPlanned }]); document.getElementById(inputId).value = ''; fetchReasons(); } 
         }
-
         async function editReason(id, oldName) { const newName = prompt('新停機項目名稱：', oldName); if (newName) { await db.from('downtime_reasons').update({ name: newName.trim() }).eq('id', id); fetchReasons(); } }
         async function deleteReason(id) { if (confirm('確定刪除？')) { await db.from('downtime_reasons').delete().eq('id', id); fetchReasons(); } }
 
@@ -823,7 +661,7 @@
             const reasonId = select.value; 
             if (!reasonId) return alert('請選擇停機項目！');
             
-            const reasonName = select.options[select.selectedIndex].text.replace(/^\[.*?\]\s*/, '');
+            const reasonName = select.options[select.selectedIndex].text;
             const isPlanned = select.options[select.selectedIndex].getAttribute('data-planned') === 'true';
             const hours = parseInt(document.getElementById('downtimeHour').value); const minutes = parseInt(document.getElementById('downtimeMinute').value);
             const totalDuration = (hours * 60) + minutes;
@@ -921,7 +759,7 @@
             const reasonId = select.value; 
             if (!reasonId) return alert('請選擇停機項目！');
             
-            const reasonName = select.options[select.selectedIndex].text.replace(/^\[.*?\]\s*/, '');
+            const reasonName = select.options[select.selectedIndex].text;
             const hours = parseInt(document.getElementById('downtimeHour').value); 
             const minutes = parseInt(document.getElementById('downtimeMinute').value);
             const totalDuration = (hours * 60) + minutes;
@@ -1143,7 +981,7 @@
             const select = document.getElementById('editDtReason');
             const reasonId = select.value; 
             if (!reasonId) return alert('請選擇停機項目！');
-            const reasonName = select.options[select.selectedIndex].text.replace(/^\[.*?\]\s*/, '');
+            const reasonName = select.options[select.selectedIndex].text;
             const isPlanned = select.options[select.selectedIndex].getAttribute('data-planned') === 'true';
             const hours = parseInt(document.getElementById('editDtHour').value); 
             const minutes = parseInt(document.getElementById('editDtMinute').value);
@@ -1191,19 +1029,19 @@
             loadRecordsByDate(); 
         }
 
-        // ================= ★ 統計與導出邏輯 (完美融合防重複與類別) ★ =================
+        // ================= ★ 統計與導出邏輯 ★ =================
         async function queryStatistics() {
             const startDate = document.getElementById('statStartDate').value; const endDate = document.getElementById('statEndDate').value; 
             const lineName = document.getElementById('statLine').value; const machineId = document.getElementById('statMachine').value;
             
             if (!startDate || !endDate) return alert('請選擇開始與結束日期！');
 
-            let query = db.from('production_records').select('*, machines(name), downtime_events(duration_minutes, remark, downtime_reasons(name, is_planned, category))').gte('record_date', startDate).lte('record_date', endDate).order('record_date', { ascending: true });
+            let query = db.from('production_records').select('*, machines(name), downtime_events(duration_minutes, remark, downtime_reasons(name, is_planned))').gte('record_date', startDate).lte('record_date', endDate);
             if (lineName) query = query.eq('line_name', lineName); if (machineId) query = query.eq('machine_id', machineId);
 
             const { data: records, error } = await query;
             
-            // 防重複疊加的合併邏輯
+            // ★ 精準防重複合併邏輯：只取最新的獨立紀錄，並剔除因為誤按存檔產生的完全重複停機明細
             let mergedMap = {};
             (records || []).forEach(r => {
                 let key = `${r.record_date}_${r.machine_id}`;
@@ -1212,6 +1050,7 @@
                 } else {
                     if (r.downtime_events) {
                         r.downtime_events.forEach(ev => {
+                            // 比對是否為相同的停機理由、時間、備註 (防呆：防止使用者連點導致的無效疊加)
                             const isDup = mergedMap[key].downtime_events.some(e => 
                                 e.downtime_reasons.name === ev.downtime_reasons.name && 
                                 e.duration_minutes === ev.duration_minutes && 
@@ -1237,7 +1076,7 @@
                 alert(error ? '查詢失敗！' : '這段期間沒有符合條件的資料！'); 
                 document.getElementById('statOEE').innerText = '0.0%'; document.getElementById('statTotalDowntime').innerText = '0 分鐘'; 
                 document.getElementById('statSummaryBody').innerHTML = '<tr><td colspan="4" style="text-align:center;">無資料</td></tr>';
-                document.getElementById('statDetailBody').innerHTML = '<tr><td colspan="11" style="text-align:center;">無資料</td></tr>';
+                document.getElementById('statDetailBody').innerHTML = '<tr><td colspan="10" style="text-align:center;">無資料</td></tr>';
                 if (downtimeChartInstance) downtimeChartInstance.destroy(); currentExportData = []; simpleExportData = []; weeklyExportData = []; monthlyExportData = []; 
                 document.getElementById('summaryMachineFilter').innerHTML = '<option value="">請重新查詢</option>';
                 return; 
@@ -1273,14 +1112,13 @@
                     record.downtime_events.forEach(event => {
                         const duration = event.duration_minutes; 
                         const rName = event.downtime_reasons.name;
-                        const rCat = event.downtime_reasons.category || '未分類';
                         const rMark = event.remark ? event.remark : '';
                         
                         if (event.downtime_reasons.is_planned) recordPlannedDowntime += duration;
                         else recordUnplannedDowntime += duration; 
                         
                         if (!recordReasonMap[rName]) {
-                            recordReasonMap[rName] = { duration: duration, isPlanned: event.downtime_reasons.is_planned, category: rCat, remarks: [] };
+                            recordReasonMap[rName] = { duration: duration, isPlanned: event.downtime_reasons.is_planned, remarks: [] };
                         } else {
                             recordReasonMap[rName].duration += duration;
                         }
@@ -1289,20 +1127,14 @@
                 }
                 
                 const actualAvailMin = plannedActualMin - recordPlannedDowntime; 
+                // ★ 計算實際生產時間
+                const actualProductionTime = actualAvailMin - recordUnplannedDowntime;
                 
-                // 防呆鎖：防止實際生產時間低於 0 分鐘
-                let actualProductionTime = actualAvailMin - recordUnplannedDowntime;
-                if (actualProductionTime < 0) actualProductionTime = 0;
-
                 let recordOEE = actualAvailMin > 0 ? (actualProductionTime / actualAvailMin) * 100 : 0;
 
                 simpleExportData.push({
                     "日期": record.record_date,
-                    "線別": record.line_name,
                     "機台": record.machines.name,
-                    "實際可用時間(分)": actualAvailMin,
-                    "非計畫停機": recordUnplannedDowntime,
-                    "實際生產時間": actualProductionTime,
                     "稼動率": recordOEE.toFixed(2) + '%'
                 });
 
@@ -1322,7 +1154,7 @@
 
                 const rKeys = Object.keys(recordReasonMap).sort((a, b) => a.localeCompare(b, 'zh-TW'));
                 
-                // Excel 欄位順序對齊
+                // ★ 完美對齊請求的 Excel 欄位順序與內容
                 if (rKeys.length === 0) {
                     currentExportData.push({ 
                         "日期": record.record_date, 
@@ -1333,7 +1165,6 @@
                         "結束時間": record.end_time,
                         "有輪休": record.is_rolling_break ? '是' : '否', 
                         "實際可用時間(分)": actualAvailMin, 
-                        "停機大類": "-",
                         "停機項目": "無", 
                         "屬性": "-", 
                         "該項停機(分)": 0, 
@@ -1343,7 +1174,7 @@
                         "稼動率(%)": recordOEE.toFixed(2) + '%', 
                         "備註": "-" 
                     });
-                    detailHTML += `<tr><td>${record.record_date}</td><td>${record.line_name}</td><td>${record.machines.name}</td><td>${actualAvailMin}</td><td>-</td><td>無</td><td>-</td><td>-</td><td style="color:#e53e3e; font-weight:bold;">0</td><td>${actualProductionTime}</td><td>${recordOEE.toFixed(2)}%</td></tr>`;
+                    detailHTML += `<tr><td>${record.record_date}</td><td>${record.line_name}</td><td>${record.machines.name}</td><td>${actualAvailMin}</td><td>無</td><td>-</td><td>-</td><td>0</td><td>${recordOEE.toFixed(2)}%</td><td>-</td></tr>`;
                 } else {
                     rKeys.forEach((rName, idx) => {
                         const tInfo = recordReasonMap[rName];
@@ -1359,7 +1190,6 @@
                             "結束時間": record.end_time,
                             "有輪休": record.is_rolling_break ? '是' : '否', 
                             "實際可用時間(分)": actualAvailMin, 
-                            "停機大類": tInfo.category,
                             "停機項目": rName, 
                             "屬性": typeStr, 
                             "該項停機(分)": tInfo.duration, 
@@ -1378,17 +1208,14 @@
                                 <td rowspan="${rKeys.length}">${record.line_name}</td>
                                 <td rowspan="${rKeys.length}">${record.machines.name}</td>
                                 <td rowspan="${rKeys.length}">${actualAvailMin}</td>
-                                <td style="border-left: 1px solid #e2e8f0; color:#4a5568; font-size:13px;">${tInfo.category}</td>
                                 <td style="border-left: 1px solid #e2e8f0;">${rName} <br><span style="font-size:12px;${colorStyle}">[${typeStr}]</span></td>
                                 <td style="font-weight:bold; ${colorStyle}">${tInfo.duration}</td>
                                 <td rowspan="${rKeys.length}" style="word-break: break-all; max-width: 150px; white-space: normal;"><span style="font-size:13px; color:#718096;">${combinedRemarks || '-'}</span></td>
                                 <td rowspan="${rKeys.length}" style="color:#e53e3e; font-weight:bold;">${recordUnplannedDowntime}</td>
-                                <td rowspan="${rKeys.length}">${actualProductionTime}</td>
                                 <td rowspan="${rKeys.length}">${recordOEE.toFixed(2)}%</td>
                             </tr>`;
                         } else {
                             detailHTML += `<tr>
-                                <td style="border-left: 1px solid #e2e8f0; color:#4a5568; font-size:13px;">${tInfo.category}</td>
                                 <td style="border-left: 1px solid #e2e8f0;">${rName} <br><span style="font-size:12px;${colorStyle}">[${typeStr}]</span></td>
                                 <td style="font-weight:bold; ${colorStyle}">${tInfo.duration}</td>
                             </tr>`;
@@ -1400,18 +1227,14 @@
             document.getElementById('statDetailBody').innerHTML = detailHTML;
 
             weeklyExportData = Object.values(weeklyMap).map(w => {
-                let actualProd = w.avail - w.unplanned;
-                if (actualProd < 0) actualProd = 0;
-                let oee = w.avail > 0 ? (actualProd / w.avail) * 100 : 0;
-                return { "週別": w.period, "機台": w.machine, "平均可用時間(分)": w.avail, "平均非計畫停機": w.unplanned, "實際生產時間": actualProd, "平均稼動率": oee.toFixed(2) + '%' };
+                let oee = w.avail > 0 ? ((w.avail - w.unplanned) / w.avail) * 100 : 0;
+                return { "週別": w.period, "機台": w.machine, "平均稼動率": oee.toFixed(2) + '%' };
             });
             weeklyExportData.sort((a,b) => a.週別.localeCompare(b.週別) || a.機台.localeCompare(b.機台));
 
             monthlyExportData = Object.values(monthlyMap).map(m => {
-                let actualProd = m.avail - m.unplanned;
-                if (actualProd < 0) actualProd = 0;
-                let oee = m.avail > 0 ? (actualProd / m.avail) * 100 : 0;
-                return { "月份": m.period, "機台": m.machine, "平均可用時間(分)": m.avail, "平均非計畫停機": m.unplanned, "實際生產時間": actualProd, "平均稼動率": oee.toFixed(2) + '%' };
+                let oee = m.avail > 0 ? ((m.avail - m.unplanned) / m.avail) * 100 : 0;
+                return { "月份": m.period, "機台": m.machine, "平均稼動率": oee.toFixed(2) + '%' };
             });
             monthlyExportData.sort((a,b) => a.月份.localeCompare(b.月份) || a.機台.localeCompare(b.機台));
 
@@ -1447,10 +1270,7 @@
                 totalActualAvailTime += actualAvailMin;
             });
 
-            let actualRunTime = totalActualAvailTime - grandTotalUnplannedDowntime;
-            if (actualRunTime < 0) actualRunTime = 0;
-
-            let totalOEE = totalActualAvailTime > 0 ? (actualRunTime / totalActualAvailTime) * 100 : 0;
+            let totalOEE = totalActualAvailTime > 0 ? ((totalActualAvailTime - grandTotalUnplannedDowntime) / totalActualAvailTime) * 100 : 0;
             
             document.getElementById('statOEE').innerText = totalOEE.toFixed(1) + '%'; 
             document.getElementById('statTotalDowntime').innerText = grandTotalUnplannedDowntime + ' 分鐘';
@@ -1460,6 +1280,9 @@
 
             const ctx = document.getElementById('downtimeChart').getContext('2d'); if (downtimeChartInstance) downtimeChartInstance.destroy();
             
+            let actualRunTime = totalActualAvailTime - grandTotalUnplannedDowntime;
+            if (actualRunTime < 0) actualRunTime = 0;
+
             const chartLabels = [];
             const chartData = [];
             const chartColors = [];
