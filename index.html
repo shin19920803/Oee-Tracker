@@ -241,11 +241,12 @@
                                     <th>該項停機(分)</th>
                                     <th>備註</th>
                                     <th>非計畫總停機</th>
+                                    <th>實際生產時間</th>
                                     <th>稼動率</th>
                                 </tr>
                             </thead>
                             <tbody id="statDetailBody">
-                                <tr><td colspan="10" style="text-align:center;">請先查詢統計資料...</td></tr>
+                                <tr><td colspan="11" style="text-align:center;">請先查詢統計資料...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -287,35 +288,55 @@
                     <div class="section" style="border-top: 4px solid #ecc94b;">
                         <h2><i class="fas fa-clipboard-check"></i> 計畫性停機</h2>
                         <p style="font-size: 12px; color: #718096; margin-top: 0;">(如:保養、換線。直接扣除當天可用時間，不當作損失)</p>
-                        <div class="input-group" style="flex-wrap: wrap;">
-                            <select id="plannedReasonCategory" style="min-width: 100px; padding: 10px; border-radius: 4px; border: 1px solid #cbd5e0;">
-                                <option value="設備調機">設備調機</option>
-                                <option value="待機">待機</option>
-                                <option value="首件">首件</option>
-                                <option value="設備異常">設備異常</option>
-                                <option value="其他">其他</option>
-                            </select>
-                            <input type="text" id="plannedReasonName" placeholder="例: 設備保養" style="min-width: 120px; flex: 1;">
-                            <button onclick="addReason(true)">新增項目</button>
+                        
+                        <div style="background-color: #f7fafc; padding: 10px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #e2e8f0;">
+                            <label style="font-weight: bold; margin-bottom: 5px; display: block; color: #2c3e50; font-size: 13px;">1. 類別管理</label>
+                            <div class="input-group" style="flex-wrap: wrap; margin-bottom: 10px;">
+                                <select id="plannedCategorySelect" style="flex: 2; min-width: 150px;" onchange="renderReasons()"></select>
+                                <button class="edit-btn" style="background-color: #ecc94b; color: #744210;" onclick="editCategory(true)">修改</button>
+                                <button class="delete-btn" onclick="deleteCategory(true)">刪除</button>
+                            </div>
+                            <div class="input-group" style="flex-wrap: wrap; margin-bottom: 0;">
+                                <input type="text" id="newPlannedCategory" placeholder="輸入新類別名稱" style="min-width: 150px; flex: 2;">
+                                <button onclick="addCategory(true)" style="background-color: #38a169;">新增類別</button>
+                            </div>
                         </div>
-                        <ul id="plannedReasonList"></ul>
+
+                        <div style="background-color: #f7fafc; padding: 10px; border-radius: 8px; border: 1px solid #e2e8f0;">
+                            <label style="font-weight: bold; margin-bottom: 5px; display: block; color: #2c3e50; font-size: 13px;">2. 項目管理 (加入至上方所選類別)</label>
+                            <div class="input-group" style="flex-wrap: wrap; margin-bottom: 10px;">
+                                <input type="text" id="plannedReasonName" placeholder="例: 設備保養" style="min-width: 150px; flex: 2;">
+                                <button onclick="addReason(true)" style="background-color: #3182ce;">新增項目</button>
+                            </div>
+                            <ul id="plannedReasonList" style="margin-bottom: 0;"></ul>
+                        </div>
                     </div>
 
                     <div class="section" style="border-top: 4px solid #e53e3e;">
                         <h2><i class="fas fa-exclamation-triangle"></i> 非計畫性停機</h2>
                         <p style="font-size: 12px; color: #718096; margin-top: 0;">(如:故障、缺料。直接視為生產損失，扣除稼動率)</p>
-                        <div class="input-group" style="flex-wrap: wrap;">
-                            <select id="unplannedReasonCategory" style="min-width: 100px; padding: 10px; border-radius: 4px; border: 1px solid #cbd5e0;">
-                                <option value="待機">待機</option>
-                                <option value="首件">首件</option>
-                                <option value="設備調機">設備調機</option>
-                                <option value="設備異常">設備異常</option>
-                                <option value="其他">其他</option>
-                            </select>
-                            <input type="text" id="unplannedReasonName" placeholder="例: 異常排除" style="min-width: 120px; flex: 1;">
-                            <button onclick="addReason(false)">新增項目</button>
+                        
+                        <div style="background-color: #f7fafc; padding: 10px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #e2e8f0;">
+                            <label style="font-weight: bold; margin-bottom: 5px; display: block; color: #2c3e50; font-size: 13px;">1. 類別管理</label>
+                            <div class="input-group" style="flex-wrap: wrap; margin-bottom: 10px;">
+                                <select id="unplannedCategorySelect" style="flex: 2; min-width: 150px;" onchange="renderReasons()"></select>
+                                <button class="edit-btn" style="background-color: #ecc94b; color: #744210;" onclick="editCategory(false)">修改</button>
+                                <button class="delete-btn" onclick="deleteCategory(false)">刪除</button>
+                            </div>
+                            <div class="input-group" style="flex-wrap: wrap; margin-bottom: 0;">
+                                <input type="text" id="newUnplannedCategory" placeholder="輸入新類別名稱" style="min-width: 150px; flex: 2;">
+                                <button onclick="addCategory(false)" style="background-color: #38a169;">新增類別</button>
+                            </div>
                         </div>
-                        <ul id="unplannedReasonList"></ul>
+
+                        <div style="background-color: #f7fafc; padding: 10px; border-radius: 8px; border: 1px solid #e2e8f0;">
+                            <label style="font-weight: bold; margin-bottom: 5px; display: block; color: #2c3e50; font-size: 13px;">2. 項目管理 (加入至上方所選類別)</label>
+                            <div class="input-group" style="flex-wrap: wrap; margin-bottom: 10px;">
+                                <input type="text" id="unplannedReasonName" placeholder="例: 異常排除" style="min-width: 150px; flex: 2;">
+                                <button onclick="addReason(false)" style="background-color: #3182ce;">新增項目</button>
+                            </div>
+                            <ul id="unplannedReasonList" style="margin-bottom: 0;"></ul>
+                        </div>
                     </div>
 
                     <div class="section" style="border-top: 4px solid #3182ce;">
@@ -354,11 +375,15 @@
         let inlineEditingId = null;
         let inlineDowntimeEvents = [];
 
+        // ★ 新增：類別與原因陣列
+        let allCategories = [];
+        let allReasons = [];
+
         document.addEventListener('DOMContentLoaded', () => {
             populateTimeSelects();
             fetchLines().then(() => fetchMachines());
-            fetchReasons();
             fetchOperators(); 
+            fetchAllReasonData(); // 同步抓取類別與原因
             
             const today = new Date();
             document.getElementById('recordDate').valueAsDate = today;
@@ -603,23 +628,131 @@
             targetMachines.forEach(m => { statMachineSelect.innerHTML += `<option value="${m.id}">${m.name}</option>`; });
         }
 
-        // ★ 修改：撈取與寫入資料庫加入 category 欄位
+        // ================= ★ 全新：類別與原因管理邏輯 ★ =================
+        async function fetchAllReasonData() {
+            await fetchCategories();
+            await fetchReasons();
+        }
+
+        async function fetchCategories() {
+            const { data } = await db.from('downtime_categories').select('*').order('created_at', { ascending: true });
+            allCategories = data || [];
+            
+            const pSelect = document.getElementById('plannedCategorySelect');
+            const uSelect = document.getElementById('unplannedCategorySelect');
+            
+            const currentP = pSelect.value;
+            const currentU = uSelect.value;
+            
+            pSelect.innerHTML = '';
+            uSelect.innerHTML = '';
+            
+            const pCats = allCategories.filter(c => c.is_planned);
+            const uCats = allCategories.filter(c => !c.is_planned);
+            
+            if (pCats.length === 0) pSelect.innerHTML = '<option value="">請先新增類別</option>';
+            pCats.forEach(c => pSelect.innerHTML += `<option value="${c.name}">${c.name}</option>`);
+            
+            if (uCats.length === 0) uSelect.innerHTML = '<option value="">請先新增類別</option>';
+            uCats.forEach(c => uSelect.innerHTML += `<option value="${c.name}">${c.name}</option>`);
+            
+            if (currentP && pCats.find(c => c.name === currentP)) pSelect.value = currentP;
+            if (currentU && uCats.find(c => c.name === currentU)) uSelect.value = currentU;
+            
+            renderReasons();
+        }
+
+        async function addCategory(isPlanned) {
+            const inputId = isPlanned ? 'newPlannedCategory' : 'newUnplannedCategory';
+            const name = document.getElementById(inputId).value.trim();
+            if (!name) return alert('請輸入類別名稱！');
+            
+            if (allCategories.find(c => c.name === name && c.is_planned === isPlanned)) {
+                return alert('該類別已存在！');
+            }
+            
+            await db.from('downtime_categories').insert([{ name, is_planned: isPlanned }]);
+            document.getElementById(inputId).value = '';
+            await fetchCategories();
+        }
+
+        async function editCategory(isPlanned) {
+            const selectId = isPlanned ? 'plannedCategorySelect' : 'unplannedCategorySelect';
+            const oldName = document.getElementById(selectId).value;
+            if (!oldName) return alert('請先選擇要修改的類別！');
+            
+            const newName = prompt('請輸入新的類別名稱：', oldName);
+            if (newName && newName.trim() !== oldName) {
+                const trimName = newName.trim();
+                const exists = allCategories.find(c => c.name === trimName && c.is_planned === isPlanned);
+                if (exists) return alert('該類別名稱已存在！');
+
+                await db.from('downtime_categories').update({ name: trimName }).eq('name', oldName).eq('is_planned', isPlanned);
+                // 同步更新底下所有細項的類別名稱
+                await db.from('downtime_reasons').update({ category: trimName }).eq('category', oldName).eq('is_planned', isPlanned);
+                
+                await fetchAllReasonData();
+            }
+        }
+
+        async function deleteCategory(isPlanned) {
+            const selectId = isPlanned ? 'plannedCategorySelect' : 'unplannedCategorySelect';
+            const name = document.getElementById(selectId).value;
+            if (!name) return alert('請先選擇要刪除的類別！');
+            
+            if (confirm(`確定要刪除類別「${name}」嗎？\n⚠️ 警告：這將會一併刪除該類別底下的所有停機細項！`)) {
+                await db.from('downtime_categories').delete().eq('name', name).eq('is_planned', isPlanned);
+                await db.from('downtime_reasons').delete().eq('category', name).eq('is_planned', isPlanned);
+                await fetchAllReasonData();
+            }
+        }
+
         async function fetchReasons() {
             const { data } = await db.from('downtime_reasons').select('id, name, is_planned, category');
-            const plannedList = document.getElementById('plannedReasonList'); const unplannedList = document.getElementById('unplannedReasonList'); const select = document.getElementById('downtimeReasonSelect');
-            plannedList.innerHTML = ''; unplannedList.innerHTML = ''; select.innerHTML = '<option value="">請選擇停機項目</option>';
-            if(!data) return;
+            allReasons = data || [];
+            allReasons.sort((a, b) => (a.category||'').localeCompare(b.category||'', 'zh-TW') || a.name.localeCompare(b.name, 'zh-TW'));
+            
+            updateMainReasonDropdown();
+            renderReasons();
+        }
 
-            data.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
+        function renderReasons() {
+            const pList = document.getElementById('plannedReasonList');
+            const uList = document.getElementById('unplannedReasonList');
+            
+            const pCat = document.getElementById('plannedCategorySelect').value;
+            const uCat = document.getElementById('unplannedCategorySelect').value;
+            
+            pList.innerHTML = '';
+            uList.innerHTML = '';
+            
+            const filteredP = allReasons.filter(r => r.is_planned && r.category === pCat);
+            if (filteredP.length === 0) pList.innerHTML = '<li style="color:#a0aec0; font-size:13px; justify-content:center;">此類別尚無項目</li>';
+            filteredP.forEach(r => {
+                pList.innerHTML += `<li>[${r.category}] ${r.name} <div class="btn-group"><button class="edit-btn" onclick="editReason('${r.id}', '${r.name}')">編輯</button><button class="delete-btn" onclick="deleteReason('${r.id}')">刪除</button></div></li>`;
+            });
+            
+            const filteredU = allReasons.filter(r => !r.is_planned && r.category === uCat);
+            if (filteredU.length === 0) uList.innerHTML = '<li style="color:#a0aec0; font-size:13px; justify-content:center;">此類別尚無項目</li>';
+            filteredU.forEach(r => {
+                uList.innerHTML += `<li>[${r.category}] ${r.name} <div class="btn-group"><button class="edit-btn" onclick="editReason('${r.id}', '${r.name}')">編輯</button><button class="delete-btn" onclick="deleteReason('${r.id}')">刪除</button></div></li>`;
+            });
+        }
 
+        function updateMainReasonDropdown() {
+            const select = document.getElementById('downtimeReasonSelect');
+            select.innerHTML = '<option value="">請選擇停機項目</option>';
+            
             let optgroupPlanned = '<optgroup label="=== 計畫性停機 (扣除總可用時間) ===">';
             let optgroupUnplanned = '<optgroup label="=== 非計畫性停機 (扣除稼動率) ===">';
 
-            data.forEach(r => {
+            allReasons.forEach(r => {
                 const catStr = r.category ? `[${r.category}] ` : '';
-                const liHTML = `<li>${catStr}${r.name} <div class="btn-group"><button class="edit-btn" onclick="editReason('${r.id}', '${r.name}')">編輯</button><button class="delete-btn" onclick="deleteReason('${r.id}')">刪除</button></div></li>`;
-                if (r.is_planned) { plannedList.innerHTML += liHTML; optgroupPlanned += `<option value="${r.id}" data-planned="true">${catStr}${r.name}</option>`; } 
-                else { unplannedList.innerHTML += liHTML; optgroupUnplanned += `<option value="${r.id}" data-planned="false">${catStr}${r.name}</option>`; }
+                if (r.is_planned) { 
+                    optgroupPlanned += `<option value="${r.id}" data-planned="true" data-category="${r.category}">${catStr}${r.name}</option>`; 
+                } else { 
+                    optgroupUnplanned += `<option value="${r.id}" data-planned="false" data-category="${r.category}">${catStr}${r.name}</option>`; 
+                }
             });
 
             optgroupPlanned += '</optgroup>'; optgroupUnplanned += '</optgroup>';
@@ -627,16 +760,18 @@
         }
 
         async function addReason(isPlanned) { 
-            const nameId = isPlanned ? 'plannedReasonName' : 'unplannedReasonName';
-            const catId = isPlanned ? 'plannedReasonCategory' : 'unplannedReasonCategory';
-            const name = document.getElementById(nameId).value.trim(); 
-            const category = document.getElementById(catId).value;
-
-            if (name) { 
-                await db.from('downtime_reasons').insert([{ name: name, is_planned: isPlanned, category: category }]); 
-                document.getElementById(nameId).value = ''; 
-                fetchReasons(); 
-            } 
+            const selectId = isPlanned ? 'plannedCategorySelect' : 'unplannedCategorySelect';
+            const inputId = isPlanned ? 'plannedReasonName' : 'unplannedReasonName';
+            
+            const category = document.getElementById(selectId).value;
+            const name = document.getElementById(inputId).value.trim();
+            
+            if (!category) return alert('請先選擇或新增一個大類別！');
+            if (!name) return alert('請輸入項目名稱！');
+            
+            await db.from('downtime_reasons').insert([{ name: name, is_planned: isPlanned, category: category }]);
+            document.getElementById(inputId).value = '';
+            fetchReasons();
         }
 
         async function editReason(id, oldName) { const newName = prompt('新停機項目名稱：', oldName); if (newName) { await db.from('downtime_reasons').update({ name: newName.trim() }).eq('id', id); fetchReasons(); } }
@@ -685,10 +820,8 @@
             const reasonId = select.value; 
             if (!reasonId) return alert('請選擇停機項目！');
             
-            // 移除前綴標籤供純文字顯示
-            let reasonName = select.options[select.selectedIndex].text;
-            reasonName = reasonName.replace(/^\[.*?\]\s*/, ''); 
-
+            // 取得乾淨的停機名稱(不含類別前綴)供畫面顯示
+            const reasonName = select.options[select.selectedIndex].text.replace(/^\[.*?\]\s*/, '');
             const isPlanned = select.options[select.selectedIndex].getAttribute('data-planned') === 'true';
             const hours = parseInt(document.getElementById('downtimeHour').value); const minutes = parseInt(document.getElementById('downtimeMinute').value);
             const totalDuration = (hours * 60) + minutes;
@@ -1054,14 +1187,13 @@
             loadRecordsByDate(); 
         }
 
-        // ================= ★ 統計與導出邏輯 (包含加入停機大類) ★ =================
+        // ================= ★ 統計與導出邏輯 ★ =================
         async function queryStatistics() {
             const startDate = document.getElementById('statStartDate').value; const endDate = document.getElementById('statEndDate').value; 
             const lineName = document.getElementById('statLine').value; const machineId = document.getElementById('statMachine').value;
             
             if (!startDate || !endDate) return alert('請選擇開始與結束日期！');
 
-            // ★ 修改：撈取資料時同時獲取 downtime_reasons 的 category 欄位
             let query = db.from('production_records').select('*, machines(name), downtime_events(duration_minutes, remark, downtime_reasons(name, is_planned, category))').gte('record_date', startDate).lte('record_date', endDate).order('record_date', { ascending: true });
             if (lineName) query = query.eq('line_name', lineName); if (machineId) query = query.eq('machine_id', machineId);
 
@@ -1152,8 +1284,6 @@
                 }
                 
                 const actualAvailMin = plannedActualMin - recordPlannedDowntime; 
-                
-                // ★ 防呆鎖：防止實際生產時間低於 0 分鐘，導致負數稼動率
                 let actualProductionTime = actualAvailMin - recordUnplannedDowntime;
                 if (actualProductionTime < 0) actualProductionTime = 0;
 
@@ -1185,7 +1315,6 @@
 
                 const rKeys = Object.keys(recordReasonMap).sort((a, b) => a.localeCompare(b, 'zh-TW'));
                 
-                // ★ 完美的匯出對齊，並加入大類
                 if (rKeys.length === 0) {
                     currentExportData.push({ 
                         "日期": record.record_date, 
@@ -1309,7 +1438,6 @@
                 totalActualAvailTime += actualAvailMin;
             });
 
-            // 防呆鎖：防止總圖表算出負數
             let actualRunTime = totalActualAvailTime - grandTotalUnplannedDowntime;
             if (actualRunTime < 0) actualRunTime = 0;
 
