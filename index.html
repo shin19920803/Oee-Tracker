@@ -236,16 +236,17 @@
                                     <th>線別</th>
                                     <th>機台</th>
                                     <th>可用時間(分)</th>
+                                    <th>類別</th>
                                     <th>停機項目</th>
                                     <th>該項停機(分)</th>
+                                    <th>備註</th>
                                     <th>非計畫總停機</th>
                                     <th>實際生產時間</th>
                                     <th>稼動率</th>
-                                    <th>備註</th>
                                 </tr>
                             </thead>
                             <tbody id="statDetailBody">
-                                <tr><td colspan="10" style="text-align:center;">請先查詢統計資料...</td></tr>
+                                <tr><td colspan="11" style="text-align:center;">請先查詢統計資料...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -359,7 +360,6 @@
             loadRecordsByDate();
         });
 
-        // 取得 ISO 週別字串 (如 2026-W12)
         function getWeekString(dStr) {
             const [y, m, d] = dStr.split('-').map(Number);
             const date = new Date(y, m - 1, d);
@@ -370,7 +370,6 @@
             return `${date.getFullYear()}-W${String(weekNo).padStart(2, '0')}`;
         }
 
-        // ================= 作業人員相關邏輯 =================
         async function fetchOperators() {
             const { data } = await db.from('operators').select('*').order('created_at', { ascending: true });
             const list = document.getElementById('operatorList');
@@ -427,7 +426,6 @@
             return html;
         }
 
-        // ================= 時間選單工具 =================
         function populateTimeSelects() {
             const hours24 = Array.from({length: 24}, (_, i) => String(i).padStart(2, '0'));
             const minutes60 = Array.from({length: 60}, (_, i) => String(i).padStart(2, '0'));
@@ -492,7 +490,6 @@
             return availMin;
         }
 
-        // ================= 線別與機台連動 =================
         async function fetchLines() {
             const { data } = await db.from('lines').select('*');
             allLines = data || [];
@@ -1029,7 +1026,18 @@
             loadRecordsByDate(); 
         }
 
-        // ================= ★ 統計與導出邏輯 ★ =================
+        // ================= ★ 統計與導出邏輯 (包含防重複與類別) ★ =================
+        // ★ 新增：用於動態判斷類別的對照表 (確保不動到資料庫又能完美分類)
+        function getCategoryByReason(rName) {
+            const mapping = {
+                '首件': '首件', '抽檢': '首件', '開線前調機': '首件', '開機暖機': '首件',
+                '設備保養': '待機', '換線/調機': '待機', '更換DAF膠': '待機', '待料/待機': '待機', '換料': '待機', 'MES異常': '待機',
+                '品質異常停機': '設備異常', '借機': '設備異常', '異常/調機': '設備異常', '設備故障': '設備異常', 'DAF撕膜脫落': '設備異常',
+                '收線清潔': '其他', '開會': '其他', '人員休息': '其他'
+            };
+            return mapping[rName] || '其他';
+        }
+
         async function queryStatistics() {
             const startDate = document.getElementById('statStartDate').value; const endDate = document.getElementById('statEndDate').value; 
             const lineName = document.getElementById('statLine').value; const machineId = document.getElementById('statMachine').value;
@@ -1041,7 +1049,7 @@
 
             const { data: records, error } = await query;
             
-            // ★ 精準防重複合併邏輯：只取最新的獨立紀錄，並剔除因為誤按存檔產生的完全重複停機明細
+            // 防重複疊加的合併邏輯
             let mergedMap = {};
             (records || []).forEach(r => {
                 let key = `${r.record_date}_${r.machine_id}`;
@@ -1050,7 +1058,6 @@
                 } else {
                     if (r.downtime_events) {
                         r.downtime_events.forEach(ev => {
-                            // 比對是否為相同的停機理由、時間、備註 (防呆：防止使用者連點導致的無效疊加)
                             const isDup = mergedMap[key].downtime_events.some(e => 
                                 e.downtime_reasons.name === ev.downtime_reasons.name && 
                                 e.duration_minutes === ev.duration_minutes && 
@@ -1076,7 +1083,7 @@
                 alert(error ? '查詢失敗！' : '這段期間沒有符合條件的資料！'); 
                 document.getElementById('statOEE').innerText = '0.0%'; document.getElementById('statTotalDowntime').innerText = '0 分鐘'; 
                 document.getElementById('statSummaryBody').innerHTML = '<tr><td colspan="4" style="text-align:center;">無資料</td></tr>';
-                document.getElementById('statDetailBody').innerHTML = '<tr><td colspan="10" style="text-align:center;">無資料</td></tr>';
+                document.getElementById('statDetailBody').innerHTML = '<tr><td colspan="11" style="text-align:center;">無資料</td></tr>';
                 if (downtimeChartInstance) downtimeChartInstance.destroy(); currentExportData = []; simpleExportData = []; weeklyExportData = []; monthlyExportData = []; 
                 document.getElementById('summaryMachineFilter').innerHTML = '<option value="">請重新查詢</option>';
                 return; 
@@ -1127,14 +1134,20 @@
                 }
                 
                 const actualAvailMin = plannedActualMin - recordPlannedDowntime; 
-                // ★ 計算實際生產時間
-                const actualProductionTime = actualAvailMin - recordUnplannedDowntime;
                 
+                // 防呆鎖：防止實際生產時間低於 0 分鐘
+                let actualProductionTime = actualAvailMin - recordUnplannedDowntime;
+                if (actualProductionTime < 0) actualProductionTime = 0;
+
                 let recordOEE = actualAvailMin > 0 ? (actualProductionTime / actualAvailMin) * 100 : 0;
 
                 simpleExportData.push({
                     "日期": record.record_date,
+                    "線別": record.line_name,
                     "機台": record.machines.name,
+                    "實際可用時間(分)": actualAvailMin,
+                    "非計畫停機": recordUnplannedDowntime,
+                    "實際生產時間": actualProductionTime,
                     "稼動率": recordOEE.toFixed(2) + '%'
                 });
 
@@ -1154,7 +1167,7 @@
 
                 const rKeys = Object.keys(recordReasonMap).sort((a, b) => a.localeCompare(b, 'zh-TW'));
                 
-                // ★ 完美對齊請求的 Excel 欄位順序與內容
+                // Excel 欄位順序對齊與動態加入「類別」
                 if (rKeys.length === 0) {
                     currentExportData.push({ 
                         "日期": record.record_date, 
@@ -1165,6 +1178,7 @@
                         "結束時間": record.end_time,
                         "有輪休": record.is_rolling_break ? '是' : '否', 
                         "實際可用時間(分)": actualAvailMin, 
+                        "類別": "-", // ★ 新增類別
                         "停機項目": "無", 
                         "屬性": "-", 
                         "該項停機(分)": 0, 
@@ -1174,12 +1188,13 @@
                         "稼動率(%)": recordOEE.toFixed(2) + '%', 
                         "備註": "-" 
                     });
-                    detailHTML += `<tr><td>${record.record_date}</td><td>${record.line_name}</td><td>${record.machines.name}</td><td>${actualAvailMin}</td><td>無</td><td>-</td><td>-</td><td>0</td><td>${recordOEE.toFixed(2)}%</td><td>-</td></tr>`;
+                    detailHTML += `<tr><td>${record.record_date}</td><td>${record.line_name}</td><td>${record.machines.name}</td><td>${actualAvailMin}</td><td>-</td><td>無</td><td>-</td><td>-</td><td style="color:#e53e3e; font-weight:bold;">0</td><td>${actualProductionTime}</td><td>${recordOEE.toFixed(2)}%</td></tr>`;
                 } else {
                     rKeys.forEach((rName, idx) => {
                         const tInfo = recordReasonMap[rName];
                         const typeStr = tInfo.isPlanned ? '計畫(扣可用)' : '非計畫(算損失)';
                         const combinedRemarks = tInfo.remarks.join(', ');
+                        const catName = getCategoryByReason(rName); // ★ 自動判斷類別
                         
                         currentExportData.push({ 
                             "日期": record.record_date, 
@@ -1190,6 +1205,7 @@
                             "結束時間": record.end_time,
                             "有輪休": record.is_rolling_break ? '是' : '否', 
                             "實際可用時間(分)": actualAvailMin, 
+                            "類別": catName, // ★ 新增類別
                             "停機項目": rName, 
                             "屬性": typeStr, 
                             "該項停機(分)": tInfo.duration, 
@@ -1208,16 +1224,20 @@
                                 <td rowspan="${rKeys.length}">${record.line_name}</td>
                                 <td rowspan="${rKeys.length}">${record.machines.name}</td>
                                 <td rowspan="${rKeys.length}">${actualAvailMin}</td>
+                                <td style="border-left: 1px solid #e2e8f0; font-size:13px; color:#4a5568;">${catName}</td>
                                 <td style="border-left: 1px solid #e2e8f0;">${rName} <br><span style="font-size:12px;${colorStyle}">[${typeStr}]</span></td>
                                 <td style="font-weight:bold; ${colorStyle}">${tInfo.duration}</td>
-                                <td rowspan="${rKeys.length}" style="word-break: break-all; max-width: 150px; white-space: normal;"><span style="font-size:13px; color:#718096;">${combinedRemarks || '-'}</span></td>
+                                <td style="word-break: break-all; max-width: 150px; white-space: normal;"><span style="font-size:13px; color:#718096;">${combinedRemarks || '-'}</span></td>
                                 <td rowspan="${rKeys.length}" style="color:#e53e3e; font-weight:bold;">${recordUnplannedDowntime}</td>
+                                <td rowspan="${rKeys.length}">${actualProductionTime}</td>
                                 <td rowspan="${rKeys.length}">${recordOEE.toFixed(2)}%</td>
                             </tr>`;
                         } else {
                             detailHTML += `<tr>
+                                <td style="border-left: 1px solid #e2e8f0; font-size:13px; color:#4a5568;">${catName}</td>
                                 <td style="border-left: 1px solid #e2e8f0;">${rName} <br><span style="font-size:12px;${colorStyle}">[${typeStr}]</span></td>
                                 <td style="font-weight:bold; ${colorStyle}">${tInfo.duration}</td>
+                                <td style="word-break: break-all; max-width: 150px; white-space: normal;"><span style="font-size:13px; color:#718096;">${combinedRemarks || '-'}</span></td>
                             </tr>`;
                         }
                     });
@@ -1227,14 +1247,18 @@
             document.getElementById('statDetailBody').innerHTML = detailHTML;
 
             weeklyExportData = Object.values(weeklyMap).map(w => {
-                let oee = w.avail > 0 ? ((w.avail - w.unplanned) / w.avail) * 100 : 0;
-                return { "週別": w.period, "機台": w.machine, "平均稼動率": oee.toFixed(2) + '%' };
+                let actualProd = w.avail - w.unplanned;
+                if (actualProd < 0) actualProd = 0;
+                let oee = w.avail > 0 ? (actualProd / w.avail) * 100 : 0;
+                return { "週別": w.period, "機台": w.machine, "平均可用時間(分)": w.avail, "平均非計畫停機": w.unplanned, "實際生產時間": actualProd, "平均稼動率": oee.toFixed(2) + '%' };
             });
             weeklyExportData.sort((a,b) => a.週別.localeCompare(b.週別) || a.機台.localeCompare(b.機台));
 
             monthlyExportData = Object.values(monthlyMap).map(m => {
-                let oee = m.avail > 0 ? ((m.avail - m.unplanned) / m.avail) * 100 : 0;
-                return { "月份": m.period, "機台": m.machine, "平均稼動率": oee.toFixed(2) + '%' };
+                let actualProd = m.avail - m.unplanned;
+                if (actualProd < 0) actualProd = 0;
+                let oee = m.avail > 0 ? (actualProd / m.avail) * 100 : 0;
+                return { "月份": m.period, "機台": m.machine, "平均可用時間(分)": m.avail, "平均非計畫停機": m.unplanned, "實際生產時間": actualProd, "平均稼動率": oee.toFixed(2) + '%' };
             });
             monthlyExportData.sort((a,b) => a.月份.localeCompare(b.月份) || a.機台.localeCompare(b.機台));
 
@@ -1270,7 +1294,10 @@
                 totalActualAvailTime += actualAvailMin;
             });
 
-            let totalOEE = totalActualAvailTime > 0 ? ((totalActualAvailTime - grandTotalUnplannedDowntime) / totalActualAvailTime) * 100 : 0;
+            let actualRunTime = totalActualAvailTime - grandTotalUnplannedDowntime;
+            if (actualRunTime < 0) actualRunTime = 0;
+
+            let totalOEE = totalActualAvailTime > 0 ? (actualRunTime / totalActualAvailTime) * 100 : 0;
             
             document.getElementById('statOEE').innerText = totalOEE.toFixed(1) + '%'; 
             document.getElementById('statTotalDowntime').innerText = grandTotalUnplannedDowntime + ' 分鐘';
@@ -1280,9 +1307,6 @@
 
             const ctx = document.getElementById('downtimeChart').getContext('2d'); if (downtimeChartInstance) downtimeChartInstance.destroy();
             
-            let actualRunTime = totalActualAvailTime - grandTotalUnplannedDowntime;
-            if (actualRunTime < 0) actualRunTime = 0;
-
             const chartLabels = [];
             const chartData = [];
             const chartColors = [];
