@@ -235,18 +235,21 @@
                                     <th>日期</th>
                                     <th>線別</th>
                                     <th>機台</th>
-                                    <th>可用時間(分)</th>
-                                    <th>停機大類</th>
+                                    <th>登記人</th>
+                                    <th>開線時間</th>
+                                    <th>結束時間</th>
+                                    <th>有輪休</th>
+                                    <th>實際可用時間(分)</th>
+                                    <th>類別</th>
                                     <th>停機項目</th>
                                     <th>該項停機(分)</th>
-                                    <th>備註</th>
-                                    <th>非計畫總停機</th>
                                     <th>實際生產時間</th>
-                                    <th>稼動率</th>
+                                    <th>稼動率(%)</th>
+                                    <th>備註</th>
                                 </tr>
                             </thead>
                             <tbody id="statDetailBody">
-                                <tr><td colspan="11" style="text-align:center;">請先查詢統計資料...</td></tr>
+                                <tr><td colspan="14" style="text-align:center;">請先查詢統計資料...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -360,17 +363,7 @@
             loadRecordsByDate();
         });
 
-        // ★ 核心修改：精準對齊最新的圖片分類
-        function getCategoryByReason(rName) {
-            const mapping = {
-                '首件': '首件', '抽檢': '首件', '開線前調機': '首件', '開機暖機': '首件',
-                '設備保養': '待機', '更換DAF膠': '待機', '待料/待機': '待機', '換料': '待機', 'MES異常': '待機', '換線/調機': '待機',
-                '品質異常停機': '設備異常', '借機': '設備異常', '異常/調機': '設備異常', '設備故障': '設備異常', 'DAF撕膜脫落': '設備異常',
-                '收線清潔': '其他', '開會': '其他', '人員休息': '其他'
-            };
-            return mapping[rName] || '其他';
-        }
-
+        // 取得 ISO 週別字串 (如 2026-W12)
         function getWeekString(dStr) {
             const [y, m, d] = dStr.split('-').map(Number);
             const date = new Date(y, m - 1, d);
@@ -381,6 +374,7 @@
             return `${date.getFullYear()}-W${String(weekNo).padStart(2, '0')}`;
         }
 
+        // ================= 作業人員相關邏輯 =================
         async function fetchOperators() {
             const { data } = await db.from('operators').select('*').order('created_at', { ascending: true });
             const list = document.getElementById('operatorList');
@@ -437,6 +431,7 @@
             return html;
         }
 
+        // ================= 時間選單工具 =================
         function populateTimeSelects() {
             const hours24 = Array.from({length: 24}, (_, i) => String(i).padStart(2, '0'));
             const minutes60 = Array.from({length: 60}, (_, i) => String(i).padStart(2, '0'));
@@ -501,6 +496,7 @@
             return availMin;
         }
 
+        // ================= 線別與機台連動 =================
         async function fetchLines() {
             const { data } = await db.from('lines').select('*');
             allLines = data || [];
@@ -584,7 +580,6 @@
                 operatorSelect.value = "";
             }
         }
-
         function updateRecordMachineDropdown() {
             const recordSelect = document.getElementById('recordMachine'); const selectedLineName = document.getElementById('recordLine').value;
             recordSelect.innerHTML = '<option value="">請先選擇機台</option>'; if (!selectedLineName) return;
@@ -716,7 +711,6 @@
         }
 
         async function submitMachineRecord() {
-            // 自動防呆
             const dtReason = document.getElementById('downtimeReasonSelect').value;
             const dtH = parseInt(document.getElementById('downtimeHour').value) || 0;
             const dtM = parseInt(document.getElementById('downtimeMinute').value) || 0;
@@ -775,14 +769,13 @@
             
             if (totalDuration <= 0) return alert('停機時間必須大於 0 分鐘！');
 
-            if (!confirm(`確定要將「${reasonName} - ${totalDuration}分鐘」套用到【${line}】的所有機台嗎？\n(將自動排除 X-Ray 相關機台，且立即寫入資料庫！)`)) return;
+            if (!confirm(`確定要將「${reasonName} - ${totalDuration}分鐘」套用到【${line}】的所有機台嗎？\n(將立即寫入資料庫！)`)) return;
 
             localStorage.setItem('smtSavedLine', line);
             localStorage.setItem('smtSavedOperator_' + line, operatorName); 
 
-            // ★ 修改：加上排除 X-Ray 的條件
-            const lineMachines = allMachines.filter(m => m.lines && m.lines.name === line && !m.name.toUpperCase().includes('X-RAY'));
-            if (lineMachines.length === 0) return alert('此線別目前沒有綁定任何機台(或僅有被排除的機台)！');
+            const lineMachines = allMachines.filter(m => m.lines && m.lines.name === line);
+            if (lineMachines.length === 0) return alert('此線別目前沒有綁定任何機台，請先至基礎設定新增！');
 
             const { data: existingRecords, error: fetchErr } = await db.from('production_records')
                 .select('id, machine_id')
@@ -832,7 +825,7 @@
                 if (dtErr) return alert('寫入停機明細失敗: ' + dtErr.message);
             }
 
-            alert(`已成功將停機套用至全線 ${lineMachines.length} 台機台！\n(已自動排除 X-Ray)`);
+            alert(`已成功將停機套用至全線 ${lineMachines.length} 台機台！`);
             
             select.value = ''; document.getElementById('downtimeHour').value = '0'; document.getElementById('downtimeMinute').value = '0'; document.getElementById('downtimeRemark').value = '';
             loadRecordsByDate();
@@ -1085,7 +1078,7 @@
                 alert(error ? '查詢失敗！' : '這段期間沒有符合條件的資料！'); 
                 document.getElementById('statOEE').innerText = '0.0%'; document.getElementById('statTotalDowntime').innerText = '0 分鐘'; 
                 document.getElementById('statSummaryBody').innerHTML = '<tr><td colspan="4" style="text-align:center;">無資料</td></tr>';
-                document.getElementById('statDetailBody').innerHTML = '<tr><td colspan="12" style="text-align:center;">無資料</td></tr>';
+                document.getElementById('statDetailBody').innerHTML = '<tr><td colspan="14" style="text-align:center;">無資料</td></tr>';
                 if (downtimeChartInstance) downtimeChartInstance.destroy(); currentExportData = []; simpleExportData = []; weeklyExportData = []; monthlyExportData = []; 
                 document.getElementById('summaryMachineFilter').innerHTML = '<option value="">請重新查詢</option>';
                 return; 
@@ -1145,11 +1138,7 @@
 
                 simpleExportData.push({
                     "日期": record.record_date,
-                    "線別": record.line_name,
                     "機台": record.machines.name,
-                    "實際可用時間(分)": actualAvailMin,
-                    "非計畫停機": recordUnplannedDowntime,
-                    "實際生產時間": actualProductionTime,
                     "稼動率": recordOEE.toFixed(2) + '%'
                 });
 
@@ -1169,7 +1158,7 @@
 
                 const rKeys = Object.keys(recordReasonMap).sort((a, b) => a.localeCompare(b, 'zh-TW'));
                 
-                // Excel 欄位順序對齊
+                // ★ 完美對齊請求的 Excel 14個欄位順序與內容，類別僅顯示"計畫性"/"非計畫性"
                 if (rKeys.length === 0) {
                     currentExportData.push({ 
                         "日期": record.record_date, 
@@ -1180,23 +1169,34 @@
                         "結束時間": record.end_time,
                         "有輪休": record.is_rolling_break ? '是' : '否', 
                         "實際可用時間(分)": actualAvailMin, 
-                        "類別": "-", // ★ 加入類別
+                        "類別": "-", 
                         "停機項目": "無", 
-                        "屬性": "-", 
                         "該項停機(分)": 0, 
-                        "計畫性停機扣除(分)": recordPlannedDowntime, 
-                        "非計畫總停機(損失分)": 0, 
                         "實際生產時間": actualProductionTime,
                         "稼動率(%)": recordOEE.toFixed(2) + '%', 
                         "備註": "-" 
                     });
-                    detailHTML += `<tr><td>${record.record_date}</td><td>${record.line_name}</td><td>${record.machines.name}</td><td>${actualAvailMin}</td><td>-</td><td>無</td><td>-</td><td>-</td><td style="color:#e53e3e; font-weight:bold;">0</td><td>${actualProductionTime}</td><td>${recordOEE.toFixed(2)}%</td></tr>`;
+                    detailHTML += `<tr>
+                        <td>${record.record_date}</td>
+                        <td>${record.line_name}</td>
+                        <td>${record.machines.name}</td>
+                        <td>${record.operator_name || '-'}</td>
+                        <td>${record.start_time}</td>
+                        <td>${record.end_time}</td>
+                        <td>${record.is_rolling_break ? '是' : '否'}</td>
+                        <td>${actualAvailMin}</td>
+                        <td>-</td>
+                        <td>無</td>
+                        <td style="color:#e53e3e; font-weight:bold;">0</td>
+                        <td>${actualProductionTime}</td>
+                        <td>${recordOEE.toFixed(2)}%</td>
+                        <td>-</td>
+                    </tr>`;
                 } else {
                     rKeys.forEach((rName, idx) => {
                         const tInfo = recordReasonMap[rName];
-                        const typeStr = tInfo.isPlanned ? '計畫(扣可用)' : '非計畫(算損失)';
                         const combinedRemarks = tInfo.remarks.join(', ');
-                        const catName = getCategoryByReason(rName); // ★ 自動判斷類別
+                        const exportCategory = tInfo.isPlanned ? '計畫性' : '非計畫性'; // ★ 重新定義類別規則
                         
                         currentExportData.push({ 
                             "日期": record.record_date, 
@@ -1207,12 +1207,9 @@
                             "結束時間": record.end_time,
                             "有輪休": record.is_rolling_break ? '是' : '否', 
                             "實際可用時間(分)": actualAvailMin, 
-                            "類別": catName, // ★ 加入類別
+                            "類別": exportCategory, 
                             "停機項目": rName, 
-                            "屬性": typeStr, 
                             "該項停機(分)": tInfo.duration, 
-                            "計畫性停機扣除(分)": recordPlannedDowntime, 
-                            "非計畫總停機(損失分)": recordUnplannedDowntime, 
                             "實際生產時間": actualProductionTime,
                             "稼動率(%)": recordOEE.toFixed(2) + '%', 
                             "備註": combinedRemarks || '-' 
@@ -1225,19 +1222,22 @@
                                 <td rowspan="${rKeys.length}">${record.record_date}</td>
                                 <td rowspan="${rKeys.length}">${record.line_name}</td>
                                 <td rowspan="${rKeys.length}">${record.machines.name}</td>
+                                <td rowspan="${rKeys.length}">${record.operator_name || '-'}</td>
+                                <td rowspan="${rKeys.length}">${record.start_time}</td>
+                                <td rowspan="${rKeys.length}">${record.end_time}</td>
+                                <td rowspan="${rKeys.length}">${record.is_rolling_break ? '是' : '否'}</td>
                                 <td rowspan="${rKeys.length}">${actualAvailMin}</td>
-                                <td style="border-left: 1px solid #e2e8f0; font-size:13px; color:#4a5568;">${catName}</td>
-                                <td style="border-left: 1px solid #e2e8f0;">${rName} <br><span style="font-size:12px;${colorStyle}">[${typeStr}]</span></td>
+                                <td style="border-left: 1px solid #e2e8f0; font-size:13px; color:#4a5568;">${exportCategory}</td>
+                                <td style="border-left: 1px solid #e2e8f0;">${rName}</td>
                                 <td style="font-weight:bold; ${colorStyle}">${tInfo.duration}</td>
-                                <td rowspan="${rKeys.length}" style="word-break: break-all; max-width: 150px; white-space: normal;"><span style="font-size:13px; color:#718096;">${combinedRemarks || '-'}</span></td>
-                                <td rowspan="${rKeys.length}" style="color:#e53e3e; font-weight:bold;">${recordUnplannedDowntime}</td>
                                 <td rowspan="${rKeys.length}">${actualProductionTime}</td>
                                 <td rowspan="${rKeys.length}">${recordOEE.toFixed(2)}%</td>
+                                <td rowspan="${rKeys.length}" style="word-break: break-all; max-width: 150px; white-space: normal;"><span style="font-size:13px; color:#718096;">${combinedRemarks || '-'}</span></td>
                             </tr>`;
                         } else {
                             detailHTML += `<tr>
-                                <td style="border-left: 1px solid #e2e8f0; font-size:13px; color:#4a5568;">${catName}</td>
-                                <td style="border-left: 1px solid #e2e8f0;">${rName} <br><span style="font-size:12px;${colorStyle}">[${typeStr}]</span></td>
+                                <td style="border-left: 1px solid #e2e8f0; font-size:13px; color:#4a5568;">${exportCategory}</td>
+                                <td style="border-left: 1px solid #e2e8f0;">${rName}</td>
                                 <td style="font-weight:bold; ${colorStyle}">${tInfo.duration}</td>
                             </tr>`;
                         }
