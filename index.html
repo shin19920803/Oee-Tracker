@@ -236,7 +236,7 @@
                                     <th>線別</th>
                                     <th>機台</th>
                                     <th>可用時間(分)</th>
-                                    <th>類別</th>
+                                    <th>停機大類</th>
                                     <th>停機項目</th>
                                     <th>該項停機(分)</th>
                                     <th>備註</th>
@@ -359,6 +359,17 @@
             
             loadRecordsByDate();
         });
+
+        // ★ 核心修改：精準對齊最新的圖片分類
+        function getCategoryByReason(rName) {
+            const mapping = {
+                '首件': '首件', '抽檢': '首件', '開線前調機': '首件', '開機暖機': '首件',
+                '設備保養': '待機', '更換DAF膠': '待機', '待料/待機': '待機', '換料': '待機', 'MES異常': '待機', '換線/調機': '待機',
+                '品質異常停機': '設備異常', '借機': '設備異常', '異常/調機': '設備異常', '設備故障': '設備異常', 'DAF撕膜脫落': '設備異常',
+                '收線清潔': '其他', '開會': '其他', '人員休息': '其他'
+            };
+            return mapping[rName] || '其他';
+        }
 
         function getWeekString(dStr) {
             const [y, m, d] = dStr.split('-').map(Number);
@@ -688,9 +699,11 @@
             currentDowntimeEvents.forEach((event, index) => { 
                 total += event.duration; 
                 const typeTag = event.isPlanned ? '<span style="color:#d69e2e;font-weight:bold;">[計畫]</span>' : '<span style="color:#e53e3e;font-weight:bold;">[非計畫]</span>';
+                // ★ 報工預覽列表同步顯示對應的分類
+                const catName = getCategoryByReason(event.reasonName);
                 tbody.innerHTML += `<tr>
                     <td>${event.reasonName}</td>
-                    <td>${typeTag}</td>
+                    <td><span style="font-size:12px; color:#4a5568;">[${catName}]</span> ${typeTag}</td>
                     <td>${event.duration}</td>
                     <td style="max-width: 150px; word-break: break-all; white-space: normal;">${event.remark || '-'}</td>
                     <td>
@@ -898,7 +911,8 @@
                             totalDowntime += e.duration_minutes; 
                             const typeTag = e.downtime_reasons.is_planned ? '<span style="color:#d69e2e; font-weight:bold;">[計]</span>' : '<span style="color:#e53e3e; font-weight:bold;">[非]</span>';
                             const remarkText = e.remark ? ` <span style="color:#718096; font-size:12px; word-break: break-all;">(${e.remark})</span>` : '';
-                            dtHtml += `<div style="margin-bottom:2px; white-space: normal; word-break: break-all;">${typeTag} ${e.downtime_reasons.name}: <b style="color:#2d3748;">${e.duration_minutes}</b>分${remarkText}</div>`;
+                            const catName = getCategoryByReason(e.downtime_reasons.name);
+                            dtHtml += `<div style="margin-bottom:2px; white-space: normal; word-break: break-all;"><span style="font-size:12px; color:#4a5568;">[${catName}]</span> ${typeTag} ${e.downtime_reasons.name}: <b style="color:#2d3748;">${e.duration_minutes}</b>分${remarkText}</div>`;
                         });
                     } else {
                         dtHtml = '<span style="color:#a0aec0;">無停機</span>';
@@ -963,8 +977,9 @@
             inlineDowntimeEvents.forEach((e, idx) => {
                 const typeTag = e.isPlanned ? '<span style="color:#d69e2e;">[計]</span>' : '<span style="color:#e53e3e;">[非]</span>';
                 const rText = e.remark ? ` <i style="color:#718096; font-size:12px;">(${e.remark})</i>` : '';
+                const catName = getCategoryByReason(e.reasonName);
                 html += `<div style="background:#f7fafc; padding:5px 10px; border-radius:4px; border:1px solid #e2e8f0; display:inline-flex; align-items:center; justify-content:space-between; max-width:450px; margin-bottom:5px;">
-                    <span style="word-break: break-all; white-space: normal; padding-right:10px;">${typeTag} ${e.reasonName} - <b>${e.duration}</b> 分鐘${rText}</span>
+                    <span style="word-break: break-all; white-space: normal; padding-right:10px;"><span style="font-size:12px; color:#4a5568;">[${catName}]</span> ${typeTag} ${e.reasonName} - <b>${e.duration}</b> 分鐘${rText}</span>
                     <div style="display:flex; gap:5px; flex-shrink:0;">
                         <button onclick="editInlineDowntime(${idx})" style="background:#48bb78; color:white; border:none; border-radius:3px; cursor:pointer; padding:4px 8px;" title="載入編輯"><i class="fas fa-edit"></i></button>
                         <button onclick="removeInlineDowntime(${idx})" style="background:#e53e3e; color:white; border:none; border-radius:3px; cursor:pointer; padding:4px 8px;" title="移除"><i class="fas fa-times"></i></button>
@@ -1026,18 +1041,7 @@
             loadRecordsByDate(); 
         }
 
-        // ================= ★ 統計與導出邏輯 (包含防重複與類別) ★ =================
-        // ★ 新增：用於動態判斷類別的對照表 (確保不動到資料庫又能完美分類)
-        function getCategoryByReason(rName) {
-            const mapping = {
-                '首件': '首件', '抽檢': '首件', '開線前調機': '首件', '開機暖機': '首件',
-                '設備保養': '待機', '換線/調機': '待機', '更換DAF膠': '待機', '待料/待機': '待機', '換料': '待機', 'MES異常': '待機',
-                '品質異常停機': '設備異常', '借機': '設備異常', '異常/調機': '設備異常', '設備故障': '設備異常', 'DAF撕膜脫落': '設備異常',
-                '收線清潔': '其他', '開會': '其他', '人員休息': '其他'
-            };
-            return mapping[rName] || '其他';
-        }
-
+        // ================= ★ 統計與導出邏輯 ★ =================
         async function queryStatistics() {
             const startDate = document.getElementById('statStartDate').value; const endDate = document.getElementById('statEndDate').value; 
             const lineName = document.getElementById('statLine').value; const machineId = document.getElementById('statMachine').value;
@@ -1049,7 +1053,7 @@
 
             const { data: records, error } = await query;
             
-            // 防重複疊加的合併邏輯
+            // ★ 精準防重複合併邏輯：只取最新的獨立紀錄，並剔除因為誤按存檔產生的完全重複停機明細
             let mergedMap = {};
             (records || []).forEach(r => {
                 let key = `${r.record_date}_${r.machine_id}`;
@@ -1058,6 +1062,7 @@
                 } else {
                     if (r.downtime_events) {
                         r.downtime_events.forEach(ev => {
+                            // 比對是否為相同的停機理由、時間、備註 (防呆：防止使用者連點導致的無效疊加)
                             const isDup = mergedMap[key].downtime_events.some(e => 
                                 e.downtime_reasons.name === ev.downtime_reasons.name && 
                                 e.duration_minutes === ev.duration_minutes && 
@@ -1135,7 +1140,7 @@
                 
                 const actualAvailMin = plannedActualMin - recordPlannedDowntime; 
                 
-                // 防呆鎖：防止實際生產時間低於 0 分鐘
+                // ★ 計算實際生產時間
                 let actualProductionTime = actualAvailMin - recordUnplannedDowntime;
                 if (actualProductionTime < 0) actualProductionTime = 0;
 
@@ -1143,11 +1148,7 @@
 
                 simpleExportData.push({
                     "日期": record.record_date,
-                    "線別": record.line_name,
                     "機台": record.machines.name,
-                    "實際可用時間(分)": actualAvailMin,
-                    "非計畫停機": recordUnplannedDowntime,
-                    "實際生產時間": actualProductionTime,
                     "稼動率": recordOEE.toFixed(2) + '%'
                 });
 
@@ -1167,7 +1168,7 @@
 
                 const rKeys = Object.keys(recordReasonMap).sort((a, b) => a.localeCompare(b, 'zh-TW'));
                 
-                // Excel 欄位順序對齊與動態加入「類別」
+                // ★ 完美對齊請求的 Excel 欄位順序與內容
                 if (rKeys.length === 0) {
                     currentExportData.push({ 
                         "日期": record.record_date, 
@@ -1178,7 +1179,7 @@
                         "結束時間": record.end_time,
                         "有輪休": record.is_rolling_break ? '是' : '否', 
                         "實際可用時間(分)": actualAvailMin, 
-                        "類別": "-", // ★ 新增類別
+                        "類別": "-",
                         "停機項目": "無", 
                         "屬性": "-", 
                         "該項停機(分)": 0, 
@@ -1194,7 +1195,7 @@
                         const tInfo = recordReasonMap[rName];
                         const typeStr = tInfo.isPlanned ? '計畫(扣可用)' : '非計畫(算損失)';
                         const combinedRemarks = tInfo.remarks.join(', ');
-                        const catName = getCategoryByReason(rName); // ★ 自動判斷類別
+                        const catName = getCategoryByReason(rName);
                         
                         currentExportData.push({ 
                             "日期": record.record_date, 
@@ -1205,7 +1206,7 @@
                             "結束時間": record.end_time,
                             "有輪休": record.is_rolling_break ? '是' : '否', 
                             "實際可用時間(分)": actualAvailMin, 
-                            "類別": catName, // ★ 新增類別
+                            "類別": catName,
                             "停機項目": rName, 
                             "屬性": typeStr, 
                             "該項停機(分)": tInfo.duration, 
@@ -1227,7 +1228,7 @@
                                 <td style="border-left: 1px solid #e2e8f0; font-size:13px; color:#4a5568;">${catName}</td>
                                 <td style="border-left: 1px solid #e2e8f0;">${rName} <br><span style="font-size:12px;${colorStyle}">[${typeStr}]</span></td>
                                 <td style="font-weight:bold; ${colorStyle}">${tInfo.duration}</td>
-                                <td style="word-break: break-all; max-width: 150px; white-space: normal;"><span style="font-size:13px; color:#718096;">${combinedRemarks || '-'}</span></td>
+                                <td rowspan="${rKeys.length}" style="word-break: break-all; max-width: 150px; white-space: normal;"><span style="font-size:13px; color:#718096;">${combinedRemarks || '-'}</span></td>
                                 <td rowspan="${rKeys.length}" style="color:#e53e3e; font-weight:bold;">${recordUnplannedDowntime}</td>
                                 <td rowspan="${rKeys.length}">${actualProductionTime}</td>
                                 <td rowspan="${rKeys.length}">${recordOEE.toFixed(2)}%</td>
@@ -1237,7 +1238,6 @@
                                 <td style="border-left: 1px solid #e2e8f0; font-size:13px; color:#4a5568;">${catName}</td>
                                 <td style="border-left: 1px solid #e2e8f0;">${rName} <br><span style="font-size:12px;${colorStyle}">[${typeStr}]</span></td>
                                 <td style="font-weight:bold; ${colorStyle}">${tInfo.duration}</td>
-                                <td style="word-break: break-all; max-width: 150px; white-space: normal;"><span style="font-size:13px; color:#718096;">${combinedRemarks || '-'}</span></td>
                             </tr>`;
                         }
                     });
