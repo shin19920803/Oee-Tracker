@@ -699,11 +699,9 @@
             currentDowntimeEvents.forEach((event, index) => { 
                 total += event.duration; 
                 const typeTag = event.isPlanned ? '<span style="color:#d69e2e;font-weight:bold;">[計畫]</span>' : '<span style="color:#e53e3e;font-weight:bold;">[非計畫]</span>';
-                // ★ 報工預覽列表同步顯示對應的分類
-                const catName = getCategoryByReason(event.reasonName);
                 tbody.innerHTML += `<tr>
                     <td>${event.reasonName}</td>
-                    <td><span style="font-size:12px; color:#4a5568;">[${catName}]</span> ${typeTag}</td>
+                    <td>${typeTag}</td>
                     <td>${event.duration}</td>
                     <td style="max-width: 150px; word-break: break-all; white-space: normal;">${event.remark || '-'}</td>
                     <td>
@@ -777,13 +775,14 @@
             
             if (totalDuration <= 0) return alert('停機時間必須大於 0 分鐘！');
 
-            if (!confirm(`確定要將「${reasonName} - ${totalDuration}分鐘」套用到【${line}】的所有機台嗎？\n(將立即寫入資料庫！)`)) return;
+            if (!confirm(`確定要將「${reasonName} - ${totalDuration}分鐘」套用到【${line}】的所有機台嗎？\n(將自動排除 X-Ray 相關機台，且立即寫入資料庫！)`)) return;
 
             localStorage.setItem('smtSavedLine', line);
             localStorage.setItem('smtSavedOperator_' + line, operatorName); 
 
-            const lineMachines = allMachines.filter(m => m.lines && m.lines.name === line);
-            if (lineMachines.length === 0) return alert('此線別目前沒有綁定任何機台，請先至基礎設定新增！');
+            // ★ 修改：加上排除 X-Ray 的條件
+            const lineMachines = allMachines.filter(m => m.lines && m.lines.name === line && !m.name.toUpperCase().includes('X-RAY'));
+            if (lineMachines.length === 0) return alert('此線別目前沒有綁定任何機台(或僅有被排除的機台)！');
 
             const { data: existingRecords, error: fetchErr } = await db.from('production_records')
                 .select('id, machine_id')
@@ -833,7 +832,7 @@
                 if (dtErr) return alert('寫入停機明細失敗: ' + dtErr.message);
             }
 
-            alert(`已成功將停機套用至全線 ${lineMachines.length} 台機台！`);
+            alert(`已成功將停機套用至全線 ${lineMachines.length} 台機台！\n(已自動排除 X-Ray)`);
             
             select.value = ''; document.getElementById('downtimeHour').value = '0'; document.getElementById('downtimeMinute').value = '0'; document.getElementById('downtimeRemark').value = '';
             loadRecordsByDate();
@@ -911,8 +910,7 @@
                             totalDowntime += e.duration_minutes; 
                             const typeTag = e.downtime_reasons.is_planned ? '<span style="color:#d69e2e; font-weight:bold;">[計]</span>' : '<span style="color:#e53e3e; font-weight:bold;">[非]</span>';
                             const remarkText = e.remark ? ` <span style="color:#718096; font-size:12px; word-break: break-all;">(${e.remark})</span>` : '';
-                            const catName = getCategoryByReason(e.downtime_reasons.name);
-                            dtHtml += `<div style="margin-bottom:2px; white-space: normal; word-break: break-all;"><span style="font-size:12px; color:#4a5568;">[${catName}]</span> ${typeTag} ${e.downtime_reasons.name}: <b style="color:#2d3748;">${e.duration_minutes}</b>分${remarkText}</div>`;
+                            dtHtml += `<div style="margin-bottom:2px; white-space: normal; word-break: break-all;">${typeTag} ${e.downtime_reasons.name}: <b style="color:#2d3748;">${e.duration_minutes}</b>分${remarkText}</div>`;
                         });
                     } else {
                         dtHtml = '<span style="color:#a0aec0;">無停機</span>';
@@ -977,9 +975,8 @@
             inlineDowntimeEvents.forEach((e, idx) => {
                 const typeTag = e.isPlanned ? '<span style="color:#d69e2e;">[計]</span>' : '<span style="color:#e53e3e;">[非]</span>';
                 const rText = e.remark ? ` <i style="color:#718096; font-size:12px;">(${e.remark})</i>` : '';
-                const catName = getCategoryByReason(e.reasonName);
                 html += `<div style="background:#f7fafc; padding:5px 10px; border-radius:4px; border:1px solid #e2e8f0; display:inline-flex; align-items:center; justify-content:space-between; max-width:450px; margin-bottom:5px;">
-                    <span style="word-break: break-all; white-space: normal; padding-right:10px;"><span style="font-size:12px; color:#4a5568;">[${catName}]</span> ${typeTag} ${e.reasonName} - <b>${e.duration}</b> 分鐘${rText}</span>
+                    <span style="word-break: break-all; white-space: normal; padding-right:10px;">${typeTag} ${e.reasonName} - <b>${e.duration}</b> 分鐘${rText}</span>
                     <div style="display:flex; gap:5px; flex-shrink:0;">
                         <button onclick="editInlineDowntime(${idx})" style="background:#48bb78; color:white; border:none; border-radius:3px; cursor:pointer; padding:4px 8px;" title="載入編輯"><i class="fas fa-edit"></i></button>
                         <button onclick="removeInlineDowntime(${idx})" style="background:#e53e3e; color:white; border:none; border-radius:3px; cursor:pointer; padding:4px 8px;" title="移除"><i class="fas fa-times"></i></button>
@@ -1088,7 +1085,7 @@
                 alert(error ? '查詢失敗！' : '這段期間沒有符合條件的資料！'); 
                 document.getElementById('statOEE').innerText = '0.0%'; document.getElementById('statTotalDowntime').innerText = '0 分鐘'; 
                 document.getElementById('statSummaryBody').innerHTML = '<tr><td colspan="4" style="text-align:center;">無資料</td></tr>';
-                document.getElementById('statDetailBody').innerHTML = '<tr><td colspan="11" style="text-align:center;">無資料</td></tr>';
+                document.getElementById('statDetailBody').innerHTML = '<tr><td colspan="12" style="text-align:center;">無資料</td></tr>';
                 if (downtimeChartInstance) downtimeChartInstance.destroy(); currentExportData = []; simpleExportData = []; weeklyExportData = []; monthlyExportData = []; 
                 document.getElementById('summaryMachineFilter').innerHTML = '<option value="">請重新查詢</option>';
                 return; 
@@ -1140,7 +1137,7 @@
                 
                 const actualAvailMin = plannedActualMin - recordPlannedDowntime; 
                 
-                // ★ 計算實際生產時間
+                // 防呆鎖：防止實際生產時間低於 0 分鐘
                 let actualProductionTime = actualAvailMin - recordUnplannedDowntime;
                 if (actualProductionTime < 0) actualProductionTime = 0;
 
@@ -1148,7 +1145,11 @@
 
                 simpleExportData.push({
                     "日期": record.record_date,
+                    "線別": record.line_name,
                     "機台": record.machines.name,
+                    "實際可用時間(分)": actualAvailMin,
+                    "非計畫停機": recordUnplannedDowntime,
+                    "實際生產時間": actualProductionTime,
                     "稼動率": recordOEE.toFixed(2) + '%'
                 });
 
@@ -1168,7 +1169,7 @@
 
                 const rKeys = Object.keys(recordReasonMap).sort((a, b) => a.localeCompare(b, 'zh-TW'));
                 
-                // ★ 完美對齊請求的 Excel 欄位順序與內容
+                // Excel 欄位順序對齊
                 if (rKeys.length === 0) {
                     currentExportData.push({ 
                         "日期": record.record_date, 
@@ -1179,7 +1180,7 @@
                         "結束時間": record.end_time,
                         "有輪休": record.is_rolling_break ? '是' : '否', 
                         "實際可用時間(分)": actualAvailMin, 
-                        "類別": "-",
+                        "類別": "-", // ★ 加入類別
                         "停機項目": "無", 
                         "屬性": "-", 
                         "該項停機(分)": 0, 
@@ -1195,7 +1196,7 @@
                         const tInfo = recordReasonMap[rName];
                         const typeStr = tInfo.isPlanned ? '計畫(扣可用)' : '非計畫(算損失)';
                         const combinedRemarks = tInfo.remarks.join(', ');
-                        const catName = getCategoryByReason(rName);
+                        const catName = getCategoryByReason(rName); // ★ 自動判斷類別
                         
                         currentExportData.push({ 
                             "日期": record.record_date, 
@@ -1206,7 +1207,7 @@
                             "結束時間": record.end_time,
                             "有輪休": record.is_rolling_break ? '是' : '否', 
                             "實際可用時間(分)": actualAvailMin, 
-                            "類別": catName,
+                            "類別": catName, // ★ 加入類別
                             "停機項目": rName, 
                             "屬性": typeStr, 
                             "該項停機(分)": tInfo.duration, 
