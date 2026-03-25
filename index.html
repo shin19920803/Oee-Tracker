@@ -363,6 +363,7 @@
             loadRecordsByDate();
         });
 
+        // 取得 ISO 週別字串 (如 2026-W12)
         function getWeekString(dStr) {
             const [y, m, d] = dStr.split('-').map(Number);
             const date = new Date(y, m - 1, d);
@@ -576,6 +577,7 @@
                 operatorSelect.value = "";
             }
         }
+
         function updateRecordMachineDropdown() {
             const recordSelect = document.getElementById('recordMachine'); const selectedLineName = document.getElementById('recordLine').value;
             recordSelect.innerHTML = '<option value="">請先選擇機台</option>'; if (!selectedLineName) return;
@@ -589,6 +591,7 @@
             targetMachines.forEach(m => { statMachineSelect.innerHTML += `<option value="${m.id}">${m.name}</option>`; });
         }
 
+        // ★ 修改：加入變更類別的機制
         async function fetchReasons() {
             const { data } = await db.from('downtime_reasons').select('id, name, is_planned');
             const plannedList = document.getElementById('plannedReasonList'); const unplannedList = document.getElementById('unplannedReasonList'); const select = document.getElementById('downtimeReasonSelect');
@@ -601,7 +604,8 @@
             let optgroupUnplanned = '<optgroup label="=== 非計畫性停機 (扣除稼動率) ===">';
 
             data.forEach(r => {
-                const liHTML = `<li>${r.name} <div class="btn-group"><button class="edit-btn" onclick="editReason('${r.id}', '${r.name}')">編輯</button><button class="delete-btn" onclick="deleteReason('${r.id}')">刪除</button></div></li>`;
+                // 將 is_planned 作為參數傳入 editReason
+                const liHTML = `<li>${r.name} <div class="btn-group"><button class="edit-btn" onclick="editReason('${r.id}', '${r.name}', ${r.is_planned})">編輯</button><button class="delete-btn" onclick="deleteReason('${r.id}')">刪除</button></div></li>`;
                 if (r.is_planned) { plannedList.innerHTML += liHTML; optgroupPlanned += `<option value="${r.id}" data-planned="true">${r.name}</option>`; } 
                 else { unplannedList.innerHTML += liHTML; optgroupUnplanned += `<option value="${r.id}" data-planned="false">${r.name}</option>`; }
             });
@@ -614,7 +618,23 @@
             const inputId = isPlanned ? 'plannedReasonName' : 'unplannedReasonName'; const name = document.getElementById(inputId).value.trim(); 
             if (name) { await db.from('downtime_reasons').insert([{ name: name, is_planned: isPlanned }]); document.getElementById(inputId).value = ''; fetchReasons(); } 
         }
-        async function editReason(id, oldName) { const newName = prompt('新停機項目名稱：', oldName); if (newName) { await db.from('downtime_reasons').update({ name: newName.trim() }).eq('id', id); fetchReasons(); } }
+
+        // ★ 核心修改：允許變更「計畫性/非計畫性」的雙層視窗邏輯
+        async function editReason(id, oldName, isPlanned) { 
+            const newName = prompt('請輸入新的停機項目名稱：', oldName); 
+            if (newName !== null) { 
+                const changeType = confirm(`目前分類為：【${isPlanned ? '計畫性停機' : '非計畫性停機'}】\n\n是否要變更為【${!isPlanned ? '計畫性停機' : '非計畫性停機'}】？\n\n(按「確定」變更分類，按「取消」維持原分類)`);
+                const newIsPlanned = changeType ? !isPlanned : isPlanned;
+                
+                await db.from('downtime_reasons').update({ 
+                    name: newName.trim(), 
+                    is_planned: newIsPlanned 
+                }).eq('id', id); 
+                
+                fetchReasons(); 
+            } 
+        }
+
         async function deleteReason(id) { if (confirm('確定刪除？')) { await db.from('downtime_reasons').delete().eq('id', id); fetchReasons(); } }
 
         async function updateLineTime() {
@@ -968,7 +988,7 @@
                     <span style="word-break: break-all; white-space: normal; padding-right:10px;">${typeTag} ${e.reasonName} - <b>${e.duration}</b> 分鐘${rText}</span>
                     <div style="display:flex; gap:5px; flex-shrink:0;">
                         <button onclick="editInlineDowntime(${idx})" style="background:#48bb78; color:white; border:none; border-radius:3px; cursor:pointer; padding:4px 8px;" title="載入編輯"><i class="fas fa-edit"></i></button>
-                        <button onclick="removeInlineDowntime(${idx})" style="background:#e53e3e; color:white; border:none; border-radius:3px; cursor: cursor:pointer; padding:4px 8px;" title="移除"><i class="fas fa-times"></i></button>
+                        <button onclick="removeInlineDowntime(${idx})" style="background:#e53e3e; color:white; border:none; border-radius:3px; cursor:pointer; padding:4px 8px;" title="移除"><i class="fas fa-times"></i></button>
                     </div>
                 </div>`;
             });
@@ -1027,6 +1047,17 @@
         }
 
         // ================= ★ 統計與導出邏輯 ★ =================
+        // 核心修改：判斷停機類別並套用於導出報表
+        function getCategoryByReason(rName) {
+            const mapping = {
+                '首件': '首件', '抽檢': '首件', '開線前調機': '首件', '開機暖機': '首件',
+                '設備保養': '待機', '換線/調機': '待機', '更換DAF膠': '待機', '待料/待機': '待機', '換料': '待機', 'MES異常': '待機',
+                '品質異常停機': '設備異常', '借機': '設備異常', '異常/調機': '設備異常', '設備故障': '設備異常', 'DAF撕膜脫落': '設備異常',
+                '收線清潔': '其他', '開會': '其他', '人員休息': '其他'
+            };
+            return mapping[rName] || '其他';
+        }
+
         async function queryStatistics() {
             const startDate = document.getElementById('statStartDate').value; const endDate = document.getElementById('statEndDate').value; 
             const lineName = document.getElementById('statLine').value; const machineId = document.getElementById('statMachine').value;
@@ -1122,7 +1153,6 @@
                 }
                 
                 const actualAvailMin = plannedActualMin - recordPlannedDowntime; 
-                
                 let actualProductionTime = actualAvailMin - recordUnplannedDowntime;
                 if (actualProductionTime < 0) actualProductionTime = 0;
 
