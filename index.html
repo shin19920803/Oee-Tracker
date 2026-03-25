@@ -363,17 +363,6 @@
             loadRecordsByDate();
         });
 
-        // ★ 核心修改：精準對齊最新的圖片分類
-        function getCategoryByReason(rName) {
-            const mapping = {
-                '首件': '首件', '抽檢': '首件', '開線前調機': '首件', '開機暖機': '首件',
-                '設備保養': '待機', '更換DAF膠': '待機', '待料/待機': '待機', '換料': '待機', 'MES異常': '待機', '換線/調機': '待機',
-                '品質異常停機': '設備異常', '借機': '設備異常', '異常/調機': '設備異常', '設備故障': '設備異常', 'DAF撕膜脫落': '設備異常',
-                '收線清潔': '其他', '開會': '其他', '人員休息': '其他'
-            };
-            return mapping[rName] || '其他';
-        }
-
         function getWeekString(dStr) {
             const [y, m, d] = dStr.split('-').map(Number);
             const date = new Date(y, m - 1, d);
@@ -718,7 +707,6 @@
         }
 
         async function submitMachineRecord() {
-            // 自動防呆
             const dtReason = document.getElementById('downtimeReasonSelect').value;
             const dtH = parseInt(document.getElementById('downtimeHour').value) || 0;
             const dtM = parseInt(document.getElementById('downtimeMinute').value) || 0;
@@ -980,7 +968,7 @@
                     <span style="word-break: break-all; white-space: normal; padding-right:10px;">${typeTag} ${e.reasonName} - <b>${e.duration}</b> 分鐘${rText}</span>
                     <div style="display:flex; gap:5px; flex-shrink:0;">
                         <button onclick="editInlineDowntime(${idx})" style="background:#48bb78; color:white; border:none; border-radius:3px; cursor:pointer; padding:4px 8px;" title="載入編輯"><i class="fas fa-edit"></i></button>
-                        <button onclick="removeInlineDowntime(${idx})" style="background:#e53e3e; color:white; border:none; border-radius:3px; cursor:pointer; padding:4px 8px;" title="移除"><i class="fas fa-times"></i></button>
+                        <button onclick="removeInlineDowntime(${idx})" style="background:#e53e3e; color:white; border:none; border-radius:3px; cursor: cursor:pointer; padding:4px 8px;" title="移除"><i class="fas fa-times"></i></button>
                     </div>
                 </div>`;
             });
@@ -1009,7 +997,6 @@
         function removeInlineDowntime(idx) { inlineDowntimeEvents.splice(idx, 1); document.getElementById('inlineDowntimeListContainer').innerHTML = generateInlineDowntimeListHTML(); }
 
         async function saveInlineEdit(recordId) {
-            // 自動防呆
             const dtReason = document.getElementById('editDtReason').value;
             const dtH = parseInt(document.getElementById('editDtHour').value) || 0;
             const dtM = parseInt(document.getElementById('editDtMinute').value) || 0;
@@ -1051,7 +1038,6 @@
 
             const { data: records, error } = await query;
             
-            // ★ 精準防重複合併邏輯：只取最新的獨立紀錄，並剔除因為誤按存檔產生的完全重複停機明細
             let mergedMap = {};
             (records || []).forEach(r => {
                 let key = `${r.record_date}_${r.machine_id}`;
@@ -1060,7 +1046,6 @@
                 } else {
                     if (r.downtime_events) {
                         r.downtime_events.forEach(ev => {
-                            // 比對是否為相同的停機理由、時間、備註 (防呆：防止使用者連點導致的無效疊加)
                             const isDup = mergedMap[key].downtime_events.some(e => 
                                 e.downtime_reasons.name === ev.downtime_reasons.name && 
                                 e.duration_minutes === ev.duration_minutes && 
@@ -1138,13 +1123,11 @@
                 
                 const actualAvailMin = plannedActualMin - recordPlannedDowntime; 
                 
-                // 防呆鎖：防止實際生產時間低於 0 分鐘
                 let actualProductionTime = actualAvailMin - recordUnplannedDowntime;
                 if (actualProductionTime < 0) actualProductionTime = 0;
 
                 let recordOEE = actualAvailMin > 0 ? (actualProductionTime / actualAvailMin) * 100 : 0;
 
-                // ★ 補齊每日稼動率欄位
                 simpleExportData.push({
                     "日期": record.record_date,
                     "線別": record.line_name,
@@ -1171,7 +1154,6 @@
 
                 const rKeys = Object.keys(recordReasonMap).sort((a, b) => a.localeCompare(b, 'zh-TW'));
                 
-                // ★ 完美對齊請求的 Excel 14個欄位順序與內容，類別依據上方判斷帶入
                 if (rKeys.length === 0) {
                     currentExportData.push({ 
                         "日期": record.record_date, 
@@ -1209,7 +1191,7 @@
                     rKeys.forEach((rName, idx) => {
                         const tInfo = recordReasonMap[rName];
                         const combinedRemarks = tInfo.remarks.join(', ');
-                        const exportCategory = getCategoryByReason(rName); // ★ 自動判斷類別
+                        const exportCategory = tInfo.isPlanned ? '計畫性' : '非計畫性';
                         
                         currentExportData.push({ 
                             "日期": record.record_date, 
