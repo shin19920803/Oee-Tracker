@@ -363,7 +363,17 @@
             loadRecordsByDate();
         });
 
-        // 取得 ISO 週別字串 (如 2026-W12)
+        // ★ 核心修改：精準對齊最新的圖片分類
+        function getCategoryByReason(rName) {
+            const mapping = {
+                '首件': '首件', '抽檢': '首件', '開線前調機': '首件', '開機暖機': '首件',
+                '設備保養': '待機', '更換DAF膠': '待機', '待料/待機': '待機', '換料': '待機', 'MES異常': '待機', '換線/調機': '待機',
+                '品質異常停機': '設備異常', '借機': '設備異常', '異常/調機': '設備異常', '設備故障': '設備異常', 'DAF撕膜脫落': '設備異常',
+                '收線清潔': '其他', '開會': '其他', '人員休息': '其他'
+            };
+            return mapping[rName] || '其他';
+        }
+
         function getWeekString(dStr) {
             const [y, m, d] = dStr.split('-').map(Number);
             const date = new Date(y, m - 1, d);
@@ -374,7 +384,6 @@
             return `${date.getFullYear()}-W${String(weekNo).padStart(2, '0')}`;
         }
 
-        // ================= 作業人員相關邏輯 =================
         async function fetchOperators() {
             const { data } = await db.from('operators').select('*').order('created_at', { ascending: true });
             const list = document.getElementById('operatorList');
@@ -431,7 +440,6 @@
             return html;
         }
 
-        // ================= 時間選單工具 =================
         function populateTimeSelects() {
             const hours24 = Array.from({length: 24}, (_, i) => String(i).padStart(2, '0'));
             const minutes60 = Array.from({length: 60}, (_, i) => String(i).padStart(2, '0'));
@@ -496,7 +504,6 @@
             return availMin;
         }
 
-        // ================= 線別與機台連動 =================
         async function fetchLines() {
             const { data } = await db.from('lines').select('*');
             allLines = data || [];
@@ -711,6 +718,7 @@
         }
 
         async function submitMachineRecord() {
+            // 自動防呆
             const dtReason = document.getElementById('downtimeReasonSelect').value;
             const dtH = parseInt(document.getElementById('downtimeHour').value) || 0;
             const dtM = parseInt(document.getElementById('downtimeMinute').value) || 0;
@@ -769,13 +777,13 @@
             
             if (totalDuration <= 0) return alert('停機時間必須大於 0 分鐘！');
 
-            if (!confirm(`確定要將「${reasonName} - ${totalDuration}分鐘」套用到【${line}】的所有機台嗎？\n(將立即寫入資料庫！)`)) return;
+            if (!confirm(`確定要將「${reasonName} - ${totalDuration}分鐘」套用到【${line}】的所有機台嗎？\n(將自動排除 X-Ray 相關機台，且立即寫入資料庫！)`)) return;
 
             localStorage.setItem('smtSavedLine', line);
             localStorage.setItem('smtSavedOperator_' + line, operatorName); 
 
-            const lineMachines = allMachines.filter(m => m.lines && m.lines.name === line);
-            if (lineMachines.length === 0) return alert('此線別目前沒有綁定任何機台，請先至基礎設定新增！');
+            const lineMachines = allMachines.filter(m => m.lines && m.lines.name === line && !m.name.toUpperCase().includes('X-RAY'));
+            if (lineMachines.length === 0) return alert('此線別目前沒有綁定任何機台(或僅有被排除的機台)！');
 
             const { data: existingRecords, error: fetchErr } = await db.from('production_records')
                 .select('id, machine_id')
@@ -825,7 +833,7 @@
                 if (dtErr) return alert('寫入停機明細失敗: ' + dtErr.message);
             }
 
-            alert(`已成功將停機套用至全線 ${lineMachines.length} 台機台！`);
+            alert(`已成功將停機套用至全線 ${lineMachines.length} 台機台！\n(已自動排除 X-Ray)`);
             
             select.value = ''; document.getElementById('downtimeHour').value = '0'; document.getElementById('downtimeMinute').value = '0'; document.getElementById('downtimeRemark').value = '';
             loadRecordsByDate();
@@ -1136,9 +1144,14 @@
 
                 let recordOEE = actualAvailMin > 0 ? (actualProductionTime / actualAvailMin) * 100 : 0;
 
+                // ★ 補齊每日稼動率欄位
                 simpleExportData.push({
                     "日期": record.record_date,
+                    "線別": record.line_name,
                     "機台": record.machines.name,
+                    "實際可用時間(分)": actualAvailMin,
+                    "非計畫停機": recordUnplannedDowntime,
+                    "實際生產時間": actualProductionTime,
                     "稼動率": recordOEE.toFixed(2) + '%'
                 });
 
@@ -1158,7 +1171,7 @@
 
                 const rKeys = Object.keys(recordReasonMap).sort((a, b) => a.localeCompare(b, 'zh-TW'));
                 
-                // ★ 完美對齊請求的 Excel 14個欄位順序與內容，類別僅顯示"計畫性"/"非計畫性"
+                // ★ 完美對齊請求的 Excel 14個欄位順序與內容，類別依據上方判斷帶入
                 if (rKeys.length === 0) {
                     currentExportData.push({ 
                         "日期": record.record_date, 
@@ -1196,7 +1209,7 @@
                     rKeys.forEach((rName, idx) => {
                         const tInfo = recordReasonMap[rName];
                         const combinedRemarks = tInfo.remarks.join(', ');
-                        const exportCategory = tInfo.isPlanned ? '計畫性' : '非計畫性'; // ★ 重新定義類別規則
+                        const exportCategory = getCategoryByReason(rName); // ★ 自動判斷類別
                         
                         currentExportData.push({ 
                             "日期": record.record_date, 
