@@ -344,6 +344,11 @@
         let inlineEditingId = null;
         let inlineDowntimeEvents = [];
 
+        // ★ 封存標記輔助函式
+        function stripDel(name) {
+            return name && name.startsWith('@@DEL@@') ? name.substring(7) : (name || '');
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             populateTimeSelects();
             fetchLines().then(() => fetchMachines());
@@ -363,7 +368,17 @@
             loadRecordsByDate();
         });
 
-        // 取得 ISO 週別字串 (如 2026-W12)
+        function getCategoryByReason(rName) {
+            const cleanName = stripDel(rName);
+            const mapping = {
+                '首件': '首件', '抽檢': '首件', '開線前調機': '首件', '開機暖機': '首件',
+                '設備保養': '待機', '換線/調機': '待機', '更換DAF膠': '待機', '待料/待機': '待機', '換料': '待機', 'MES異常': '待機',
+                '品質異常停機': '設備異常', '借機': '設備異常', '異常/調機': '設備異常', '設備故障': '設備異常', 'DAF撕膜脫落': '設備異常',
+                '收線清潔': '其他', '開會': '其他', '人員休息': '其他'
+            };
+            return mapping[cleanName] || '其他';
+        }
+
         function getWeekString(dStr) {
             const [y, m, d] = dStr.split('-').map(Number);
             const date = new Date(y, m - 1, d);
@@ -374,6 +389,7 @@
             return `${date.getFullYear()}-W${String(weekNo).padStart(2, '0')}`;
         }
 
+        // ================= 作業人員相關邏輯 =================
         async function fetchOperators() {
             const { data } = await db.from('operators').select('*').order('created_at', { ascending: true });
             const list = document.getElementById('operatorList');
@@ -383,9 +399,11 @@
             select.innerHTML = '<option value="">請選擇人員</option>';
             
             if(data) {
-                data.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
-                data.forEach(op => {
-                    list.innerHTML += `<li>${op.name} <div class="btn-group"><button class="edit-btn" onclick="editOperator('${op.id}', '${op.name}')">編輯</button><button class="delete-btn" onclick="deleteOperator('${op.id}')">刪除</button></div></li>`;
+                // 過濾掉已封存的人員
+                const activeOps = data.filter(op => !op.name.startsWith('@@DEL@@'));
+                activeOps.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
+                activeOps.forEach(op => {
+                    list.innerHTML += `<li>${op.name} <div class="btn-group"><button class="edit-btn" onclick="editOperator('${op.id}', '${op.name.replace(/'/g, "\\'")}')">編輯</button><button class="delete-btn" onclick="deleteOperator('${op.id}', '${op.name.replace(/'/g, "\\'")}')">刪除</button></div></li>`;
                     select.innerHTML += `<option value="${op.name}">${op.name}</option>`;
                 });
                 const savedLine = localStorage.getItem('smtSavedLine');
@@ -408,14 +426,15 @@
         async function editOperator(id, oldName) { 
             const newName = prompt('新人員名稱：', oldName); 
             if (newName && newName.trim() !== oldName) { 
-                await db.from('operators').update({ name: newName.trim() }).eq('id', id); 
+                await db.from('operators').update({ name: '@@DEL@@' + oldName }).eq('id', id); 
+                await db.from('operators').insert([{ name: newName.trim() }]); 
                 fetchOperators(); 
             } 
         }
         
-        async function deleteOperator(id) { 
-            if (confirm('確定刪除此人員嗎？')) { 
-                await db.from('operators').delete().eq('id', id); 
+        async function deleteOperator(id, oldName) { 
+            if (confirm('確定刪除此人員嗎？(原本已報工的歷史數據將會保留)')) { 
+                await db.from('operators').update({ name: '@@DEL@@' + oldName }).eq('id', id); 
                 fetchOperators(); 
             } 
         }
@@ -494,9 +513,10 @@
             return availMin;
         }
 
+        // ================= 線別與機台連動 =================
         async function fetchLines() {
             const { data } = await db.from('lines').select('*');
-            allLines = data || [];
+            allLines = (data || []).filter(l => !l.name.startsWith('@@DEL@@'));
             allLines.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
             
             const recordSelect = document.getElementById('recordLine'); const settingLineSelect = document.getElementById('settingLineSelect'); const statLineSelect = document.getElementById('statLine'); 
@@ -544,21 +564,58 @@
             let targetMachines = allMachines.filter(m => m.line_id === lineId); 
             if (targetMachines.length === 0) return machineList.innerHTML = '<li><span style="color: #a0aec0;">此線尚無機台</span></li>'; 
             
-            targetMachines.forEach(m => { machineList.innerHTML += `<li>${m.name}<div class="btn-group"><button class="edit-btn" onclick="editMachine('${m.id}', '${m.name}')">編輯</button><button class="delete-btn" onclick="deleteMachine('${m.id}')">刪除</button></div></li>`; });
+            targetMachines.forEach(m => { machineList.innerHTML += `<li>${m.name}<div class="btn-group"><button class="edit-btn" onclick="editMachine('${m.id}', '${m.name.replace(/'/g, "\\'")}')">編輯</button><button class="delete-btn" onclick="deleteMachine('${m.id}', '${m.name.replace(/'/g, "\\'")}')">刪除</button></div></li>`; });
         }
 
         async function addNewLine() { const name = document.getElementById('newLineName').value.trim(); if (!name) return alert('請輸入新線別名稱'); await db.from('lines').insert([{ name }]); document.getElementById('newLineName').value=''; fetchLines(); }
-        async function editSelectedLine() { const select = document.getElementById('settingLineSelect'); const id = select.value; if (!id) return alert('請先選擇線別'); const oldName = select.options[select.selectedIndex].text; const newName = prompt('新線別名稱：', oldName); if (newName && newName.trim() !== oldName) { await db.from('lines').update({ name: newName.trim() }).eq('id', id); fetchLines(); fetchMachines(); } }
-        async function deleteSelectedLine() { const select = document.getElementById('settingLineSelect'); const id = select.value; if (!id) return alert('請先選擇線別'); if (confirm('警告：確定刪除此線別嗎？\n該線別下綁定的「所有機台」也會受影響！')) { await db.from('lines').delete().eq('id', id); fetchLines(); fetchMachines(); } }
+        
+        async function editSelectedLine() { 
+            const select = document.getElementById('settingLineSelect'); const id = select.value; 
+            if (!id) return alert('請先選擇線別'); 
+            const oldName = select.options[select.selectedIndex].text; 
+            const newName = prompt('新線別名稱：', oldName); 
+            if (newName && newName.trim() !== oldName) { 
+                await db.from('lines').update({ name: '@@DEL@@' + oldName }).eq('id', id); 
+                await db.from('lines').insert([{ name: newName.trim() }]); 
+                fetchLines(); fetchMachines(); 
+            } 
+        }
+
+        async function deleteSelectedLine() { 
+            const select = document.getElementById('settingLineSelect'); const id = select.value; 
+            if (!id) return alert('請先選擇線別'); 
+            const oldName = select.options[select.selectedIndex].text;
+            if (confirm('警告：確定刪除此線別嗎？(原本已報工的歷史數據將會保留)')) { 
+                await db.from('lines').update({ name: '@@DEL@@' + oldName }).eq('id', id); 
+                fetchLines(); fetchMachines(); 
+            } 
+        }
+
         async function addNewMachineToLine() { const lineId = document.getElementById('settingLineSelect').value; if (!lineId) return alert('請先在上方選擇線別！'); const name = document.getElementById('newMachineName').value.trim(); if (!name) return alert('請輸入機台名稱！'); await db.from('machines').insert([{ name: name, line_id: lineId }]); document.getElementById('newMachineName').value = ''; await fetchMachines(); }
+        
         async function fetchMachines() { 
             const { data } = await db.from('machines').select('*, lines(name)'); 
-            allMachines = data || []; 
+            allMachines = (data || []).filter(m => !m.name.startsWith('@@DEL@@') && (!m.lines || !m.lines.name.startsWith('@@DEL@@'))); 
             allMachines.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
             renderSettingMachineList(); updateRecordMachineDropdown(); onStatLineChange(); 
         }
-        async function editMachine(id, oldName) { const newName = prompt('新機台名稱：', oldName); if (newName && newName.trim() !== oldName) { await db.from('machines').update({ name: newName.trim() }).eq('id', id); fetchMachines(); } }
-        async function deleteMachine(id) { if (confirm('確定刪除這個機台嗎？')) { await db.from('machines').delete().eq('id', id); fetchMachines(); } }
+
+        async function editMachine(id, oldName) { 
+            const newName = prompt('新機台名稱：', oldName); 
+            if (newName && newName.trim() !== oldName) { 
+                const oldItem = allMachines.find(m => m.id === id);
+                await db.from('machines').update({ name: '@@DEL@@' + oldName }).eq('id', id); 
+                await db.from('machines').insert([{ name: newName.trim(), line_id: oldItem.line_id }]); 
+                fetchMachines(); 
+            } 
+        }
+
+        async function deleteMachine(id, oldName) { 
+            if (confirm('確定刪除這個機台嗎？(原本已報工的歷史數據將會保留)')) { 
+                await db.from('machines').update({ name: '@@DEL@@' + oldName }).eq('id', id); 
+                fetchMachines(); 
+            } 
+        }
 
         function onLineSelectionChange() { 
             updateRecordMachineDropdown(); 
@@ -577,7 +634,6 @@
                 operatorSelect.value = "";
             }
         }
-
         function updateRecordMachineDropdown() {
             const recordSelect = document.getElementById('recordMachine'); const selectedLineName = document.getElementById('recordLine').value;
             recordSelect.innerHTML = '<option value="">請先選擇機台</option>'; if (!selectedLineName) return;
@@ -591,21 +647,22 @@
             targetMachines.forEach(m => { statMachineSelect.innerHTML += `<option value="${m.id}">${m.name}</option>`; });
         }
 
-        // ★ 修改：加入變更類別的機制
+        // ★ 理由抓取與封存
         async function fetchReasons() {
             const { data } = await db.from('downtime_reasons').select('id, name, is_planned');
             const plannedList = document.getElementById('plannedReasonList'); const unplannedList = document.getElementById('unplannedReasonList'); const select = document.getElementById('downtimeReasonSelect');
             plannedList.innerHTML = ''; unplannedList.innerHTML = ''; select.innerHTML = '<option value="">請選擇停機項目</option>';
             if(!data) return;
 
-            data.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
+            const activeReasons = data.filter(r => !r.name.startsWith('@@DEL@@'));
+            allReasons = activeReasons;
+            activeReasons.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
 
             let optgroupPlanned = '<optgroup label="=== 計畫性停機 (扣除總可用時間) ===">';
             let optgroupUnplanned = '<optgroup label="=== 非計畫性停機 (扣除稼動率) ===">';
 
-            data.forEach(r => {
-                // 將 is_planned 作為參數傳入 editReason
-                const liHTML = `<li>${r.name} <div class="btn-group"><button class="edit-btn" onclick="editReason('${r.id}', '${r.name}', ${r.is_planned})">編輯</button><button class="delete-btn" onclick="deleteReason('${r.id}')">刪除</button></div></li>`;
+            activeReasons.forEach(r => {
+                const liHTML = `<li>${r.name} <div class="btn-group"><button class="edit-btn" onclick="editReason('${r.id}', '${r.name.replace(/'/g, "\\'")}', ${r.is_planned})">編輯</button><button class="delete-btn" onclick="deleteReason('${r.id}', '${r.name.replace(/'/g, "\\'")}')">刪除</button></div></li>`;
                 if (r.is_planned) { plannedList.innerHTML += liHTML; optgroupPlanned += `<option value="${r.id}" data-planned="true">${r.name}</option>`; } 
                 else { unplannedList.innerHTML += liHTML; optgroupUnplanned += `<option value="${r.id}" data-planned="false">${r.name}</option>`; }
             });
@@ -619,23 +676,27 @@
             if (name) { await db.from('downtime_reasons').insert([{ name: name, is_planned: isPlanned }]); document.getElementById(inputId).value = ''; fetchReasons(); } 
         }
 
-        // ★ 核心修改：允許變更「計畫性/非計畫性」的雙層視窗邏輯
         async function editReason(id, oldName, isPlanned) { 
             const newName = prompt('請輸入新的停機項目名稱：', oldName); 
             if (newName !== null) { 
                 const changeType = confirm(`目前分類為：【${isPlanned ? '計畫性停機' : '非計畫性停機'}】\n\n是否要變更為【${!isPlanned ? '計畫性停機' : '非計畫性停機'}】？\n\n(按「確定」變更分類，按「取消」維持原分類)`);
                 const newIsPlanned = changeType ? !isPlanned : isPlanned;
                 
-                await db.from('downtime_reasons').update({ 
-                    name: newName.trim(), 
-                    is_planned: newIsPlanned 
-                }).eq('id', id); 
+                const finalName = newName.trim() === '' ? oldName : newName.trim();
+                
+                await db.from('downtime_reasons').update({ name: '@@DEL@@' + oldName }).eq('id', id); 
+                await db.from('downtime_reasons').insert([{ name: finalName, is_planned: newIsPlanned }]); 
                 
                 fetchReasons(); 
             } 
         }
 
-        async function deleteReason(id) { if (confirm('確定刪除？')) { await db.from('downtime_reasons').delete().eq('id', id); fetchReasons(); } }
+        async function deleteReason(id, oldName) { 
+            if (confirm('確定刪除這個項目嗎？(原本已報工的歷史數據將會保留)')) { 
+                await db.from('downtime_reasons').update({ name: '@@DEL@@' + oldName }).eq('id', id); 
+                fetchReasons(); 
+            } 
+        }
 
         async function updateLineTime() {
             const date = document.getElementById('recordDate').value; 
@@ -874,12 +935,14 @@
             }
             
             recordsToShow.forEach(record => {
+                let mName = stripDel(record.machines?.name);
+
                 if (inlineEditingId === record.id) {
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
                         <td colspan="7" style="background-color: #ebf8ff; padding: 15px; border-radius: 8px; text-align: left; border: 2px solid #3182ce;">
                             <div style="font-weight:bold; margin-bottom:10px; color:#2b6cb0; font-size:16px;">
-                                <i class="fas fa-edit"></i> 編輯明細：${record.line_name} - ${record.machines.name}
+                                <i class="fas fa-edit"></i> 編輯明細：${record.line_name} - ${mName}
                             </div>
                             <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 10px; align-items: center; background:#fff; padding:10px; border-radius:6px; border:1px solid #e2e8f0;">
                                 <div style="display:flex; align-items:center;"><b>登記人:</b>&nbsp; ${generateOperatorSelectHTML(record.operator_name)}</div>
@@ -919,7 +982,8 @@
                             totalDowntime += e.duration_minutes; 
                             const typeTag = e.downtime_reasons.is_planned ? '<span style="color:#d69e2e; font-weight:bold;">[計]</span>' : '<span style="color:#e53e3e; font-weight:bold;">[非]</span>';
                             const remarkText = e.remark ? ` <span style="color:#718096; font-size:12px; word-break: break-all;">(${e.remark})</span>` : '';
-                            dtHtml += `<div style="margin-bottom:2px; white-space: normal; word-break: break-all;">${typeTag} ${e.downtime_reasons.name}: <b style="color:#2d3748;">${e.duration_minutes}</b>分${remarkText}</div>`;
+                            const rName = stripDel(e.downtime_reasons.name);
+                            dtHtml += `<div style="margin-bottom:2px; white-space: normal; word-break: break-all;">${typeTag} ${rName}: <b style="color:#2d3748;">${e.duration_minutes}</b>分${remarkText}</div>`;
                         });
                     } else {
                         dtHtml = '<span style="color:#a0aec0;">無停機</span>';
@@ -928,7 +992,7 @@
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
                         <td>${record.line_name}</td>
-                        <td>${record.machines.name}</td>
+                        <td>${mName}</td>
                         <td>${record.operator_name || '-'}</td>
                         <td>${record.start_time} ~ ${record.end_time}</td>
                         <td style="text-align:left; font-size:13px; line-height:1.4;">${dtHtml}</td>
@@ -955,7 +1019,7 @@
                 record.downtime_events.forEach(e => {
                     inlineDowntimeEvents.push({
                         reasonId: e.downtime_reasons.id,
-                        reasonName: e.downtime_reasons.name,
+                        reasonName: stripDel(e.downtime_reasons.name),
                         isPlanned: e.downtime_reasons.is_planned,
                         duration: e.duration_minutes,
                         remark: e.remark || ''
@@ -1047,17 +1111,6 @@
         }
 
         // ================= ★ 統計與導出邏輯 ★ =================
-        // 核心修改：判斷停機類別並套用於導出報表
-        function getCategoryByReason(rName) {
-            const mapping = {
-                '首件': '首件', '抽檢': '首件', '開線前調機': '首件', '開機暖機': '首件',
-                '設備保養': '待機', '換線/調機': '待機', '更換DAF膠': '待機', '待料/待機': '待機', '換料': '待機', 'MES異常': '待機',
-                '品質異常停機': '設備異常', '借機': '設備異常', '異常/調機': '設備異常', '設備故障': '設備異常', 'DAF撕膜脫落': '設備異常',
-                '收線清潔': '其他', '開會': '其他', '人員休息': '其他'
-            };
-            return mapping[rName] || '其他';
-        }
-
         async function queryStatistics() {
             const startDate = document.getElementById('statStartDate').value; const endDate = document.getElementById('statEndDate').value; 
             const lineName = document.getElementById('statLine').value; const machineId = document.getElementById('statMachine').value;
@@ -1093,7 +1146,7 @@
             
             currentQueriedRecords.sort((a, b) => {
                 if (a.record_date === b.record_date) {
-                    return (a.machines?.name || '').localeCompare(b.machines?.name || '', 'zh-TW');
+                    return stripDel(a.machines?.name).localeCompare(stripDel(b.machines?.name), 'zh-TW');
                 }
                 return a.record_date.localeCompare(b.record_date);
             });
@@ -1111,7 +1164,10 @@
             const summarySelect = document.getElementById('summaryMachineFilter');
             summarySelect.innerHTML = '<option value="ALL">全部機台平均</option>';
             const uniqueMachinesInQuery = {};
-            currentQueriedRecords.forEach(r => uniqueMachinesInQuery[r.machine_id] = r.machines.name);
+            currentQueriedRecords.forEach(r => {
+                let mName = stripDel(r.machines?.name);
+                uniqueMachinesInQuery[r.machine_id] = mName;
+            });
             
             const sortedMachineEntries = Object.entries(uniqueMachinesInQuery).sort((a, b) => a[1].localeCompare(b[1], 'zh-TW'));
             for (const [id, name] of sortedMachineEntries) {
@@ -1137,7 +1193,7 @@
                 if (record.downtime_events) {
                     record.downtime_events.forEach(event => {
                         const duration = event.duration_minutes; 
-                        const rName = event.downtime_reasons.name;
+                        const rName = stripDel(event.downtime_reasons.name);
                         const rMark = event.remark ? event.remark : '';
                         
                         if (event.downtime_reasons.is_planned) recordPlannedDowntime += duration;
@@ -1157,11 +1213,12 @@
                 if (actualProductionTime < 0) actualProductionTime = 0;
 
                 let recordOEE = actualAvailMin > 0 ? (actualProductionTime / actualAvailMin) * 100 : 0;
+                let mName = stripDel(record.machines?.name);
 
                 simpleExportData.push({
                     "日期": record.record_date,
                     "線別": record.line_name,
-                    "機台": record.machines.name,
+                    "機台": mName,
                     "實際可用時間(分)": actualAvailMin,
                     "非計畫停機": recordUnplannedDowntime,
                     "實際生產時間": actualProductionTime,
@@ -1170,7 +1227,6 @@
 
                 const weekStr = getWeekString(record.record_date);
                 const monthStr = record.record_date.substring(0, 7);
-                const mName = record.machines.name;
 
                 let wKey = weekStr + "_" + mName;
                 if(!weeklyMap[wKey]) weeklyMap[wKey] = { period: weekStr, machine: mName, avail: 0, unplanned: 0 };
@@ -1188,7 +1244,7 @@
                     currentExportData.push({ 
                         "日期": record.record_date, 
                         "線別": record.line_name, 
-                        "機台": record.machines.name, 
+                        "機台": mName, 
                         "登記人": record.operator_name || '-',
                         "開線時間": record.start_time, 
                         "結束時間": record.end_time,
@@ -1204,7 +1260,7 @@
                     detailHTML += `<tr>
                         <td>${record.record_date}</td>
                         <td>${record.line_name}</td>
-                        <td>${record.machines.name}</td>
+                        <td>${mName}</td>
                         <td>${record.operator_name || '-'}</td>
                         <td>${record.start_time}</td>
                         <td>${record.end_time}</td>
@@ -1226,7 +1282,7 @@
                         currentExportData.push({ 
                             "日期": record.record_date, 
                             "線別": record.line_name, 
-                            "機台": record.machines.name, 
+                            "機台": mName, 
                             "登記人": record.operator_name || '-',
                             "開線時間": record.start_time, 
                             "結束時間": record.end_time,
@@ -1246,7 +1302,7 @@
                             detailHTML += `<tr>
                                 <td rowspan="${rKeys.length}">${record.record_date}</td>
                                 <td rowspan="${rKeys.length}">${record.line_name}</td>
-                                <td rowspan="${rKeys.length}">${record.machines.name}</td>
+                                <td rowspan="${rKeys.length}">${mName}</td>
                                 <td rowspan="${rKeys.length}">${record.operator_name || '-'}</td>
                                 <td rowspan="${rKeys.length}">${record.start_time}</td>
                                 <td rowspan="${rKeys.length}">${record.end_time}</td>
@@ -1309,7 +1365,9 @@
                 let recordPlannedDowntime = 0;
                 if (record.downtime_events) {
                     record.downtime_events.forEach(event => {
-                        const duration = event.duration_minutes; const rName = event.downtime_reasons.name; const isPlanned = event.downtime_reasons.is_planned;
+                        const duration = event.duration_minutes; 
+                        const rName = stripDel(event.downtime_reasons.name); 
+                        const isPlanned = event.downtime_reasons.is_planned;
                         if (isPlanned) recordPlannedDowntime += duration; else grandTotalUnplannedDowntime += duration;
                         const chartName = isPlanned ? `[計畫] ${rName}` : rName;
                         reasonDowntimeMap[chartName] = (reasonDowntimeMap[chartName] || 0) + duration;
