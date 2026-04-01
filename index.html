@@ -344,7 +344,7 @@
         let inlineEditingId = null;
         let inlineDowntimeEvents = [];
 
-        // ★ 封存標籤輔助函式
+        // 幫歷史資料清除隱形刪除標記的函數
         function stripDel(name) {
             return name && name.startsWith('@@DEL@@') ? name.substring(7) : (name || '');
         }
@@ -398,7 +398,6 @@
             select.innerHTML = '<option value="">請選擇人員</option>';
             
             if(data) {
-                // ★ 隱藏軟刪除項目
                 const activeOps = data.filter(op => !op.name.startsWith('@@DEL@@'));
                 activeOps.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
                 activeOps.forEach(op => {
@@ -425,7 +424,6 @@
         async function editOperator(id, oldName) { 
             const newName = prompt('新人員名稱：', oldName); 
             if (newName && newName.trim() !== oldName) { 
-                // ★ 軟刪除與新增
                 await db.from('operators').update({ name: '@@DEL@@' + oldName }).eq('id', id); 
                 await db.from('operators').insert([{ name: newName.trim() }]); 
                 fetchOperators(); 
@@ -515,7 +513,6 @@
 
         async function fetchLines() {
             const { data } = await db.from('lines').select('*');
-            // ★ 隱藏軟刪除項目
             allLines = (data || []).filter(l => !l.name.startsWith('@@DEL@@'));
             allLines.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
             
@@ -575,7 +572,6 @@
             const oldName = select.options[select.selectedIndex].text; 
             const newName = prompt('新線別名稱：', oldName); 
             if (newName && newName.trim() !== oldName) { 
-                // ★ 軟刪除與新增
                 await db.from('lines').update({ name: '@@DEL@@' + oldName }).eq('id', id); 
                 await db.from('lines').insert([{ name: newName.trim() }]); 
                 fetchLines(); fetchMachines(); 
@@ -596,7 +592,6 @@
         
         async function fetchMachines() { 
             const { data } = await db.from('machines').select('*, lines(name)'); 
-            // ★ 隱藏軟刪除項目
             allMachines = (data || []).filter(m => !m.name.startsWith('@@DEL@@') && (!m.lines || !m.lines.name.startsWith('@@DEL@@'))); 
             allMachines.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
             renderSettingMachineList(); updateRecordMachineDropdown(); onStatLineChange(); 
@@ -649,7 +644,7 @@
             targetMachines.forEach(m => { statMachineSelect.innerHTML += `<option value="${m.id}">${m.name}</option>`; });
         }
 
-        // ================= ★ 基礎設定原因管理 (加入內聯編輯 Inline Edit 與防呆) ★ =================
+        // ================= ★ 基礎設定原因管理 (內聯編輯與屬性互轉) ★ =================
         let inlineEditReasonId = null;
 
         async function fetchReasons() {
@@ -658,7 +653,6 @@
             plannedList.innerHTML = ''; unplannedList.innerHTML = ''; select.innerHTML = '<option value="">請選擇停機項目</option>';
             if(!data) return;
 
-            // ★ 過濾掉軟刪除的紀錄
             const activeReasons = data.filter(r => !r.name.startsWith('@@DEL@@'));
             activeReasons.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
 
@@ -666,7 +660,6 @@
             let optgroupUnplanned = '<optgroup label="=== 非計畫性停機 (扣除稼動率) ===">';
 
             activeReasons.forEach(r => {
-                // 如果目前是編輯狀態
                 if (inlineEditReasonId === r.id) {
                     const liHTML = `<li style="flex-direction: column; align-items: stretch; gap: 10px; background-color: #ebf8ff; border: 1px solid #3182ce;">
                         <div style="font-weight: bold; color: #2b6cb0; font-size: 13px;"><i class="fas fa-edit"></i> 修改項目與分類</div>
@@ -699,19 +692,16 @@
             if (name) { await db.from('downtime_reasons').insert([{ name: name, is_planned: isPlanned }]); document.getElementById(inputId).value = ''; fetchReasons(); } 
         }
 
-        // 開啟內聯編輯
         function startEditReason(id) {
             inlineEditReasonId = id;
             fetchReasons();
         }
 
-        // 取消編輯
         function cancelEditReason() {
             inlineEditReasonId = null;
             fetchReasons();
         }
 
-        // 儲存原因編輯 (無痛軟刪除轉移)
         async function saveReasonEdit(id, oldName, oldIsPlanned) {
             const newName = document.getElementById(`editReasonName_${id}`).value.trim();
             const newTypeStr = document.getElementById(`editReasonType_${id}`).value;
@@ -719,14 +709,12 @@
 
             if (!newName) return alert('項目名稱不能為空！');
 
-            // 如果什麼都沒改，直接取消
             if (newName === oldName && newIsPlanned === oldIsPlanned) {
                 inlineEditReasonId = null;
                 fetchReasons();
                 return;
             }
 
-            // ★ 軟刪除舊紀錄，新增新紀錄 (確保歷史資料不變異)
             await db.from('downtime_reasons').update({ name: '@@DEL@@' + oldName }).eq('id', id);
             await db.from('downtime_reasons').insert([{ name: newName, is_planned: newIsPlanned }]);
             
@@ -735,7 +723,7 @@
         }
 
         async function deleteReason(id, oldName) { 
-            if (confirm('確定刪除這個項目嗎？(原本已報工的歷史紀錄將完美保留)')) { 
+            if (confirm('確定刪除這個項目嗎？(原本已報工的歷史紀錄將會保留)')) { 
                 await db.from('downtime_reasons').update({ name: '@@DEL@@' + oldName }).eq('id', id); 
                 fetchReasons(); 
             } 
