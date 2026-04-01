@@ -344,7 +344,7 @@
         let inlineEditingId = null;
         let inlineDowntimeEvents = [];
 
-        // ★ 封存標記輔助函式
+        // ★ 封存標籤輔助函式
         function stripDel(name) {
             return name && name.startsWith('@@DEL@@') ? name.substring(7) : (name || '');
         }
@@ -389,7 +389,6 @@
             return `${date.getFullYear()}-W${String(weekNo).padStart(2, '0')}`;
         }
 
-        // ================= 作業人員相關邏輯 =================
         async function fetchOperators() {
             const { data } = await db.from('operators').select('*').order('created_at', { ascending: true });
             const list = document.getElementById('operatorList');
@@ -399,7 +398,7 @@
             select.innerHTML = '<option value="">請選擇人員</option>';
             
             if(data) {
-                // 過濾掉已封存的人員
+                // ★ 隱藏軟刪除項目
                 const activeOps = data.filter(op => !op.name.startsWith('@@DEL@@'));
                 activeOps.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
                 activeOps.forEach(op => {
@@ -426,6 +425,7 @@
         async function editOperator(id, oldName) { 
             const newName = prompt('新人員名稱：', oldName); 
             if (newName && newName.trim() !== oldName) { 
+                // ★ 軟刪除與新增
                 await db.from('operators').update({ name: '@@DEL@@' + oldName }).eq('id', id); 
                 await db.from('operators').insert([{ name: newName.trim() }]); 
                 fetchOperators(); 
@@ -433,7 +433,7 @@
         }
         
         async function deleteOperator(id, oldName) { 
-            if (confirm('確定刪除此人員嗎？(原本已報工的歷史數據將會保留)')) { 
+            if (confirm('確定刪除此人員嗎？(原本已報工的歷史紀錄將保留)')) { 
                 await db.from('operators').update({ name: '@@DEL@@' + oldName }).eq('id', id); 
                 fetchOperators(); 
             } 
@@ -513,9 +513,9 @@
             return availMin;
         }
 
-        // ================= 線別與機台連動 =================
         async function fetchLines() {
             const { data } = await db.from('lines').select('*');
+            // ★ 隱藏軟刪除項目
             allLines = (data || []).filter(l => !l.name.startsWith('@@DEL@@'));
             allLines.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
             
@@ -575,6 +575,7 @@
             const oldName = select.options[select.selectedIndex].text; 
             const newName = prompt('新線別名稱：', oldName); 
             if (newName && newName.trim() !== oldName) { 
+                // ★ 軟刪除與新增
                 await db.from('lines').update({ name: '@@DEL@@' + oldName }).eq('id', id); 
                 await db.from('lines').insert([{ name: newName.trim() }]); 
                 fetchLines(); fetchMachines(); 
@@ -585,7 +586,7 @@
             const select = document.getElementById('settingLineSelect'); const id = select.value; 
             if (!id) return alert('請先選擇線別'); 
             const oldName = select.options[select.selectedIndex].text;
-            if (confirm('警告：確定刪除此線別嗎？(原本已報工的歷史數據將會保留)')) { 
+            if (confirm('警告：確定刪除此線別嗎？(原本已報工的歷史紀錄將保留)')) { 
                 await db.from('lines').update({ name: '@@DEL@@' + oldName }).eq('id', id); 
                 fetchLines(); fetchMachines(); 
             } 
@@ -595,6 +596,7 @@
         
         async function fetchMachines() { 
             const { data } = await db.from('machines').select('*, lines(name)'); 
+            // ★ 隱藏軟刪除項目
             allMachines = (data || []).filter(m => !m.name.startsWith('@@DEL@@') && (!m.lines || !m.lines.name.startsWith('@@DEL@@'))); 
             allMachines.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
             renderSettingMachineList(); updateRecordMachineDropdown(); onStatLineChange(); 
@@ -611,7 +613,7 @@
         }
 
         async function deleteMachine(id, oldName) { 
-            if (confirm('確定刪除這個機台嗎？(原本已報工的歷史數據將會保留)')) { 
+            if (confirm('確定刪除這個機台嗎？(原本已報工的歷史紀錄將保留)')) { 
                 await db.from('machines').update({ name: '@@DEL@@' + oldName }).eq('id', id); 
                 fetchMachines(); 
             } 
@@ -647,24 +649,45 @@
             targetMachines.forEach(m => { statMachineSelect.innerHTML += `<option value="${m.id}">${m.name}</option>`; });
         }
 
-        // ★ 理由抓取與封存
+        // ================= ★ 基礎設定原因管理 (加入內聯編輯 Inline Edit 與防呆) ★ =================
+        let inlineEditReasonId = null;
+
         async function fetchReasons() {
             const { data } = await db.from('downtime_reasons').select('id, name, is_planned');
             const plannedList = document.getElementById('plannedReasonList'); const unplannedList = document.getElementById('unplannedReasonList'); const select = document.getElementById('downtimeReasonSelect');
             plannedList.innerHTML = ''; unplannedList.innerHTML = ''; select.innerHTML = '<option value="">請選擇停機項目</option>';
             if(!data) return;
 
+            // ★ 過濾掉軟刪除的紀錄
             const activeReasons = data.filter(r => !r.name.startsWith('@@DEL@@'));
-            allReasons = activeReasons;
             activeReasons.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
 
             let optgroupPlanned = '<optgroup label="=== 計畫性停機 (扣除總可用時間) ===">';
             let optgroupUnplanned = '<optgroup label="=== 非計畫性停機 (扣除稼動率) ===">';
 
             activeReasons.forEach(r => {
-                const liHTML = `<li>${r.name} <div class="btn-group"><button class="edit-btn" onclick="editReason('${r.id}', '${r.name.replace(/'/g, "\\'")}', ${r.is_planned})">編輯</button><button class="delete-btn" onclick="deleteReason('${r.id}', '${r.name.replace(/'/g, "\\'")}')">刪除</button></div></li>`;
-                if (r.is_planned) { plannedList.innerHTML += liHTML; optgroupPlanned += `<option value="${r.id}" data-planned="true">${r.name}</option>`; } 
-                else { unplannedList.innerHTML += liHTML; optgroupUnplanned += `<option value="${r.id}" data-planned="false">${r.name}</option>`; }
+                // 如果目前是編輯狀態
+                if (inlineEditReasonId === r.id) {
+                    const liHTML = `<li style="flex-direction: column; align-items: stretch; gap: 10px; background-color: #ebf8ff; border: 1px solid #3182ce;">
+                        <div style="font-weight: bold; color: #2b6cb0; font-size: 13px;"><i class="fas fa-edit"></i> 修改項目與分類</div>
+                        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                            <input type="text" id="editReasonName_${r.id}" value="${r.name}" style="flex: 2; min-width: 150px; padding: 5px; border: 1px solid #cbd5e0; border-radius: 4px;">
+                            <select id="editReasonType_${r.id}" style="flex: 1; padding: 5px; border: 1px solid #cbd5e0; border-radius: 4px;">
+                                <option value="true" ${r.is_planned ? 'selected' : ''}>計畫性</option>
+                                <option value="false" ${!r.is_planned ? 'selected' : ''}>非計畫性</option>
+                            </select>
+                        </div>
+                        <div style="text-align: right;">
+                            <button class="delete-btn" style="background-color: #a0aec0; padding: 5px 10px;" onclick="cancelEditReason()">取消</button>
+                            <button class="edit-btn" style="background-color: #38a169; padding: 5px 15px;" onclick="saveReasonEdit('${r.id}', '${r.name.replace(/'/g, "\\'")}', ${r.is_planned})">儲存變更</button>
+                        </div>
+                    </li>`;
+                    if (r.is_planned) plannedList.innerHTML += liHTML; else unplannedList.innerHTML += liHTML;
+                } else {
+                    const liHTML = `<li>${r.name} <div class="btn-group"><button class="edit-btn" onclick="startEditReason('${r.id}')">編輯</button><button class="delete-btn" onclick="deleteReason('${r.id}', '${r.name.replace(/'/g, "\\'")}')">刪除</button></div></li>`;
+                    if (r.is_planned) { plannedList.innerHTML += liHTML; optgroupPlanned += `<option value="${r.id}" data-planned="true">${r.name}</option>`; } 
+                    else { unplannedList.innerHTML += liHTML; optgroupUnplanned += `<option value="${r.id}" data-planned="false">${r.name}</option>`; }
+                }
             });
 
             optgroupPlanned += '</optgroup>'; optgroupUnplanned += '</optgroup>';
@@ -676,23 +699,43 @@
             if (name) { await db.from('downtime_reasons').insert([{ name: name, is_planned: isPlanned }]); document.getElementById(inputId).value = ''; fetchReasons(); } 
         }
 
-        async function editReason(id, oldName, isPlanned) { 
-            const newName = prompt('請輸入新的停機項目名稱：', oldName); 
-            if (newName !== null) { 
-                const changeType = confirm(`目前分類為：【${isPlanned ? '計畫性停機' : '非計畫性停機'}】\n\n是否要變更為【${!isPlanned ? '計畫性停機' : '非計畫性停機'}】？\n\n(按「確定」變更分類，按「取消」維持原分類)`);
-                const newIsPlanned = changeType ? !isPlanned : isPlanned;
-                
-                const finalName = newName.trim() === '' ? oldName : newName.trim();
-                
-                await db.from('downtime_reasons').update({ name: '@@DEL@@' + oldName }).eq('id', id); 
-                await db.from('downtime_reasons').insert([{ name: finalName, is_planned: newIsPlanned }]); 
-                
-                fetchReasons(); 
-            } 
+        // 開啟內聯編輯
+        function startEditReason(id) {
+            inlineEditReasonId = id;
+            fetchReasons();
+        }
+
+        // 取消編輯
+        function cancelEditReason() {
+            inlineEditReasonId = null;
+            fetchReasons();
+        }
+
+        // 儲存原因編輯 (無痛軟刪除轉移)
+        async function saveReasonEdit(id, oldName, oldIsPlanned) {
+            const newName = document.getElementById(`editReasonName_${id}`).value.trim();
+            const newTypeStr = document.getElementById(`editReasonType_${id}`).value;
+            const newIsPlanned = newTypeStr === 'true';
+
+            if (!newName) return alert('項目名稱不能為空！');
+
+            // 如果什麼都沒改，直接取消
+            if (newName === oldName && newIsPlanned === oldIsPlanned) {
+                inlineEditReasonId = null;
+                fetchReasons();
+                return;
+            }
+
+            // ★ 軟刪除舊紀錄，新增新紀錄 (確保歷史資料不變異)
+            await db.from('downtime_reasons').update({ name: '@@DEL@@' + oldName }).eq('id', id);
+            await db.from('downtime_reasons').insert([{ name: newName, is_planned: newIsPlanned }]);
+            
+            inlineEditReasonId = null;
+            fetchReasons();
         }
 
         async function deleteReason(id, oldName) { 
-            if (confirm('確定刪除這個項目嗎？(原本已報工的歷史數據將會保留)')) { 
+            if (confirm('確定刪除這個項目嗎？(原本已報工的歷史紀錄將完美保留)')) { 
                 await db.from('downtime_reasons').update({ name: '@@DEL@@' + oldName }).eq('id', id); 
                 fetchReasons(); 
             } 
@@ -914,7 +957,7 @@
             const { data, error } = await db.from('production_records').select('*, machines(name), downtime_events(id, duration_minutes, remark, downtime_reasons(id, name, is_planned))').eq('record_date', date);
             loadedDailyRecords = data || []; 
             
-            loadedDailyRecords.sort((a, b) => (a.machines?.name || '').localeCompare(b.machines?.name || '', 'zh-TW'));
+            loadedDailyRecords.sort((a, b) => (stripDel(a.machines?.name) || '').localeCompare(stripDel(b.machines?.name) || '', 'zh-TW'));
             
             inlineEditingId = null; 
             renderDailyHistoryTable();
@@ -926,7 +969,7 @@
             const selectedLineName = document.getElementById('recordLine').value;
             let recordsToShow = loadedDailyRecords;
             if (selectedLineName) {
-                recordsToShow = loadedDailyRecords.filter(r => r.line_name === selectedLineName);
+                recordsToShow = loadedDailyRecords.filter(r => stripDel(r.line_name) === selectedLineName);
             }
 
             if (recordsToShow.length === 0) {
@@ -936,16 +979,18 @@
             
             recordsToShow.forEach(record => {
                 let mName = stripDel(record.machines?.name);
+                let opName = stripDel(record.operator_name) || '-';
+                let lName = stripDel(record.line_name);
 
                 if (inlineEditingId === record.id) {
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
                         <td colspan="7" style="background-color: #ebf8ff; padding: 15px; border-radius: 8px; text-align: left; border: 2px solid #3182ce;">
                             <div style="font-weight:bold; margin-bottom:10px; color:#2b6cb0; font-size:16px;">
-                                <i class="fas fa-edit"></i> 編輯明細：${record.line_name} - ${mName}
+                                <i class="fas fa-edit"></i> 編輯明細：${lName} - ${mName}
                             </div>
                             <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 10px; align-items: center; background:#fff; padding:10px; border-radius:6px; border:1px solid #e2e8f0;">
-                                <div style="display:flex; align-items:center;"><b>登記人:</b>&nbsp; ${generateOperatorSelectHTML(record.operator_name)}</div>
+                                <div style="display:flex; align-items:center;"><b>登記人:</b>&nbsp; ${generateOperatorSelectHTML(opName)}</div>
                                 <div style="display:flex; align-items:center;"><b>開線:</b>&nbsp; ${generateTimePickerHTML('editStart', record.start_time)}</div>
                                 <div style="display:flex; align-items:center;"><b>結束:</b>&nbsp; ${generateTimePickerHTML('editEnd', record.end_time)}</div>
                                 <div style="display: flex; align-items: center; gap: 5px;">
@@ -982,8 +1027,8 @@
                             totalDowntime += e.duration_minutes; 
                             const typeTag = e.downtime_reasons.is_planned ? '<span style="color:#d69e2e; font-weight:bold;">[計]</span>' : '<span style="color:#e53e3e; font-weight:bold;">[非]</span>';
                             const remarkText = e.remark ? ` <span style="color:#718096; font-size:12px; word-break: break-all;">(${e.remark})</span>` : '';
-                            const rName = stripDel(e.downtime_reasons.name);
-                            dtHtml += `<div style="margin-bottom:2px; white-space: normal; word-break: break-all;">${typeTag} ${rName}: <b style="color:#2d3748;">${e.duration_minutes}</b>分${remarkText}</div>`;
+                            const cleanReasonName = stripDel(e.downtime_reasons.name);
+                            dtHtml += `<div style="margin-bottom:2px; white-space: normal; word-break: break-all;">${typeTag} ${cleanReasonName}: <b style="color:#2d3748;">${e.duration_minutes}</b>分${remarkText}</div>`;
                         });
                     } else {
                         dtHtml = '<span style="color:#a0aec0;">無停機</span>';
@@ -991,9 +1036,9 @@
 
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
-                        <td>${record.line_name}</td>
+                        <td>${lName}</td>
                         <td>${mName}</td>
-                        <td>${record.operator_name || '-'}</td>
+                        <td>${opName}</td>
                         <td>${record.start_time} ~ ${record.end_time}</td>
                         <td style="text-align:left; font-size:13px; line-height:1.4;">${dtHtml}</td>
                         <td style="color:#e53e3e; font-weight:bold; font-size:16px;">${totalDowntime}</td>
@@ -1131,7 +1176,7 @@
                     if (r.downtime_events) {
                         r.downtime_events.forEach(ev => {
                             const isDup = mergedMap[key].downtime_events.some(e => 
-                                e.downtime_reasons.name === ev.downtime_reasons.name && 
+                                stripDel(e.downtime_reasons.name) === stripDel(ev.downtime_reasons.name) && 
                                 e.duration_minutes === ev.duration_minutes && 
                                 (e.remark || '') === (ev.remark || '')
                             );
@@ -1165,8 +1210,7 @@
             summarySelect.innerHTML = '<option value="ALL">全部機台平均</option>';
             const uniqueMachinesInQuery = {};
             currentQueriedRecords.forEach(r => {
-                let mName = stripDel(r.machines?.name);
-                uniqueMachinesInQuery[r.machine_id] = mName;
+                uniqueMachinesInQuery[r.machine_id] = stripDel(r.machines?.name);
             });
             
             const sortedMachineEntries = Object.entries(uniqueMachinesInQuery).sort((a, b) => a[1].localeCompare(b[1], 'zh-TW'));
@@ -1213,11 +1257,14 @@
                 if (actualProductionTime < 0) actualProductionTime = 0;
 
                 let recordOEE = actualAvailMin > 0 ? (actualProductionTime / actualAvailMin) * 100 : 0;
+                
+                let rLineName = stripDel(record.line_name);
                 let mName = stripDel(record.machines?.name);
+                let opName = stripDel(record.operator_name) || '-';
 
                 simpleExportData.push({
                     "日期": record.record_date,
-                    "線別": record.line_name,
+                    "線別": rLineName,
                     "機台": mName,
                     "實際可用時間(分)": actualAvailMin,
                     "非計畫停機": recordUnplannedDowntime,
@@ -1243,9 +1290,9 @@
                 if (rKeys.length === 0) {
                     currentExportData.push({ 
                         "日期": record.record_date, 
-                        "線別": record.line_name, 
+                        "線別": rLineName, 
                         "機台": mName, 
-                        "登記人": record.operator_name || '-',
+                        "登記人": opName,
                         "開線時間": record.start_time, 
                         "結束時間": record.end_time,
                         "有輪休": record.is_rolling_break ? '是' : '否', 
@@ -1259,9 +1306,9 @@
                     });
                     detailHTML += `<tr>
                         <td>${record.record_date}</td>
-                        <td>${record.line_name}</td>
+                        <td>${rLineName}</td>
                         <td>${mName}</td>
-                        <td>${record.operator_name || '-'}</td>
+                        <td>${opName}</td>
                         <td>${record.start_time}</td>
                         <td>${record.end_time}</td>
                         <td>${record.is_rolling_break ? '是' : '否'}</td>
@@ -1281,9 +1328,9 @@
                         
                         currentExportData.push({ 
                             "日期": record.record_date, 
-                            "線別": record.line_name, 
+                            "線別": rLineName, 
                             "機台": mName, 
-                            "登記人": record.operator_name || '-',
+                            "登記人": opName,
                             "開線時間": record.start_time, 
                             "結束時間": record.end_time,
                             "有輪休": record.is_rolling_break ? '是' : '否', 
@@ -1301,9 +1348,9 @@
                         if (idx === 0) {
                             detailHTML += `<tr>
                                 <td rowspan="${rKeys.length}">${record.record_date}</td>
-                                <td rowspan="${rKeys.length}">${record.line_name}</td>
+                                <td rowspan="${rKeys.length}">${rLineName}</td>
                                 <td rowspan="${rKeys.length}">${mName}</td>
-                                <td rowspan="${rKeys.length}">${record.operator_name || '-'}</td>
+                                <td rowspan="${rKeys.length}">${opName}</td>
                                 <td rowspan="${rKeys.length}">${record.start_time}</td>
                                 <td rowspan="${rKeys.length}">${record.end_time}</td>
                                 <td rowspan="${rKeys.length}">${record.is_rolling_break ? '是' : '否'}</td>
