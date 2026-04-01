@@ -344,10 +344,13 @@
         let inlineEditingId = null;
         let inlineDowntimeEvents = [];
 
-        // 幫歷史資料清除隱形刪除標記的函數
+        // ★ 封存標籤輔助函式
         function stripDel(name) {
             return name && name.startsWith('@@DEL@@') ? name.substring(7) : (name || '');
         }
+
+        // ★ 基礎設定內聯編輯 ID 追蹤
+        let inlineEditReasonId = null;
 
         document.addEventListener('DOMContentLoaded', () => {
             populateTimeSelects();
@@ -389,6 +392,7 @@
             return `${date.getFullYear()}-W${String(weekNo).padStart(2, '0')}`;
         }
 
+        // ================= 作業人員相關邏輯 =================
         async function fetchOperators() {
             const { data } = await db.from('operators').select('*').order('created_at', { ascending: true });
             const list = document.getElementById('operatorList');
@@ -398,6 +402,7 @@
             select.innerHTML = '<option value="">請選擇人員</option>';
             
             if(data) {
+                // ★ 隱藏軟刪除項目
                 const activeOps = data.filter(op => !op.name.startsWith('@@DEL@@'));
                 activeOps.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
                 activeOps.forEach(op => {
@@ -424,6 +429,7 @@
         async function editOperator(id, oldName) { 
             const newName = prompt('新人員名稱：', oldName); 
             if (newName && newName.trim() !== oldName) { 
+                // ★ 軟刪除與新增
                 await db.from('operators').update({ name: '@@DEL@@' + oldName }).eq('id', id); 
                 await db.from('operators').insert([{ name: newName.trim() }]); 
                 fetchOperators(); 
@@ -511,6 +517,7 @@
             return availMin;
         }
 
+        // ================= 線別與機台連動 =================
         async function fetchLines() {
             const { data } = await db.from('lines').select('*');
             allLines = (data || []).filter(l => !l.name.startsWith('@@DEL@@'));
@@ -645,8 +652,6 @@
         }
 
         // ================= ★ 基礎設定原因管理 (內聯編輯與屬性互轉) ★ =================
-        let inlineEditReasonId = null;
-
         async function fetchReasons() {
             const { data } = await db.from('downtime_reasons').select('id, name, is_planned');
             const plannedList = document.getElementById('plannedReasonList'); const unplannedList = document.getElementById('unplannedReasonList'); const select = document.getElementById('downtimeReasonSelect');
@@ -661,18 +666,19 @@
 
             activeReasons.forEach(r => {
                 if (inlineEditReasonId === r.id) {
-                    const liHTML = `<li style="flex-direction: column; align-items: stretch; gap: 10px; background-color: #ebf8ff; border: 1px solid #3182ce;">
-                        <div style="font-weight: bold; color: #2b6cb0; font-size: 13px;"><i class="fas fa-edit"></i> 修改項目與分類</div>
+                    // ★ 內聯展開編輯介面
+                    const liHTML = `<li style="flex-direction: column; align-items: stretch; gap: 10px; background-color: #ebf8ff; border: 1px solid #3182ce; padding: 15px;">
+                        <div style="font-weight: bold; color: #2b6cb0; font-size: 14px;"><i class="fas fa-edit"></i> 修改項目與分類</div>
                         <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                            <input type="text" id="editReasonName_${r.id}" value="${r.name}" style="flex: 2; min-width: 150px; padding: 5px; border: 1px solid #cbd5e0; border-radius: 4px;">
-                            <select id="editReasonType_${r.id}" style="flex: 1; padding: 5px; border: 1px solid #cbd5e0; border-radius: 4px;">
-                                <option value="true" ${r.is_planned ? 'selected' : ''}>計畫性</option>
-                                <option value="false" ${!r.is_planned ? 'selected' : ''}>非計畫性</option>
+                            <input type="text" id="editReasonName_${r.id}" value="${r.name}" style="flex: 2; min-width: 150px; padding: 8px; border: 1px solid #cbd5e0; border-radius: 4px;">
+                            <select id="editReasonType_${r.id}" style="flex: 1; padding: 8px; border: 1px solid #cbd5e0; border-radius: 4px;">
+                                <option value="true" ${r.is_planned ? 'selected' : ''}>計畫性停機</option>
+                                <option value="false" ${!r.is_planned ? 'selected' : ''}>非計畫性停機</option>
                             </select>
                         </div>
-                        <div style="text-align: right;">
-                            <button class="delete-btn" style="background-color: #a0aec0; padding: 5px 10px;" onclick="cancelEditReason()">取消</button>
-                            <button class="edit-btn" style="background-color: #38a169; padding: 5px 15px;" onclick="saveReasonEdit('${r.id}', '${r.name.replace(/'/g, "\\'")}', ${r.is_planned})">儲存變更</button>
+                        <div style="text-align: right; margin-top: 5px;">
+                            <button class="delete-btn" style="background-color: #a0aec0; padding: 6px 12px;" onclick="cancelEditReason()">取消</button>
+                            <button class="edit-btn" style="background-color: #38a169; padding: 6px 15px;" onclick="saveReasonEdit('${r.id}', '${r.name.replace(/'/g, "\\'")}', ${r.is_planned})">儲存</button>
                         </div>
                     </li>`;
                     if (r.is_planned) plannedList.innerHTML += liHTML; else unplannedList.innerHTML += liHTML;
@@ -703,9 +709,11 @@
         }
 
         async function saveReasonEdit(id, oldName, oldIsPlanned) {
-            const newName = document.getElementById(`editReasonName_${id}`).value.trim();
-            const newTypeStr = document.getElementById(`editReasonType_${id}`).value;
-            const newIsPlanned = newTypeStr === 'true';
+            const nameInput = document.getElementById(`editReasonName_${id}`);
+            const typeSelect = document.getElementById(`editReasonType_${id}`);
+            
+            const newName = nameInput.value.trim();
+            const newIsPlanned = typeSelect.value === 'true';
 
             if (!newName) return alert('項目名稱不能為空！');
 
@@ -715,8 +723,18 @@
                 return;
             }
 
-            await db.from('downtime_reasons').update({ name: '@@DEL@@' + oldName }).eq('id', id);
-            await db.from('downtime_reasons').insert([{ name: newName, is_planned: newIsPlanned }]);
+            // ★ 軟刪除與新增 (無痛轉移)
+            const { error: updErr } = await db.from('downtime_reasons').update({ name: '@@DEL@@' + oldName }).eq('id', id);
+            if (updErr) {
+                alert("修改失敗: " + updErr.message);
+                return;
+            }
+
+            const { error: insErr } = await db.from('downtime_reasons').insert([{ name: newName, is_planned: newIsPlanned }]);
+            if (insErr) {
+                alert("新增失敗: " + insErr.message);
+                return;
+            }
             
             inlineEditReasonId = null;
             fetchReasons();
